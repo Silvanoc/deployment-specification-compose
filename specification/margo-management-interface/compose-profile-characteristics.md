@@ -40,16 +40,19 @@ Key: `margo.org/resource/cpu`
 
 ```json
 {
-    "key": "margo.org/resource/cpu",
-    "properties": {
-        "cpus": [{
-            "cores": 12,
-            "architecture": "amd64"
-        },{
-            "cores": 12,
-            "architecture": "amd64"   
-        }]
-    }
+  "key": "margo.org/resource/cpu",
+  "properties": {
+    "cpus": [
+      {
+        "cores": 12,
+        "architecture": "amd64"
+      },
+      {
+        "cores": 12,
+        "architecture": "amd64"
+      }
+    ]
+  }
 }
 ```
 
@@ -117,7 +120,7 @@ Key: `margo.org/peripherals`
     "properties": {
         "peripherals": [{
             "type": "gpu",
-            "manufacturer": "NVIDIA",
+            "manufacturer": "NVIDIA"
         },{
             "type": "microphone"
         }]
@@ -144,7 +147,7 @@ Key: `margo.org/interfaces`
     "key": "margo.org/interfaces",
     "properties": {
         "interfaces": [{
-            "type": "ethernet",
+            "type": "ethernet"
         },{
             "type": "wifi"
         }]

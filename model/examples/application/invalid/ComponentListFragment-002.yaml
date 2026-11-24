@@ -1,0 +1,5 @@
+components:
+  - name: myapp
+    properties:
+      repository: https://registry.example.com/org/myapp
+      revision: "1.0.0"

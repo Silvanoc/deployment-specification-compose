@@ -1,0 +1,4 @@
+{
+  "org.margo.component.type": "helm",
+  "org.margo.component.version": "1.0.0"
+}

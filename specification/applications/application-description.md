@@ -17,7 +17,7 @@ id: com-northstartida-digitron-orchestrator
 metadata:
   name: Digitron orchestrator
   description: The Digitron orchestrator application
-  version: 1.2.1 
+  version: 1.2.1
   catalog:
     application:
       icon: ./resources/ndo-logo.png
@@ -110,7 +110,7 @@ parameters:
         components: ["digitron-orchestrator-docker"]
   pollFrequency:
     value: 30
-    targets: 
+    targets:
       - pointer: POLL_FREQUENCY
         components: ["digitron-orchestrator-docker"]
   siteId:
@@ -180,7 +180,7 @@ configuration:
       maxValue: 360
       allowEmpty: false
     - name: optionalText
-      dataType: string  
+      dataType: string
       minLength: 5
       allowEmpty: true
 ```

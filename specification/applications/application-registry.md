@@ -4,7 +4,7 @@ The following content supplements the [Application Registry](https://docs.margo.
 
 ## Compose Component Registry
 
-Compose components MUST be stored in an OCI-compliant Component Registry and referenced via `repository` (an `oci://` URI) and `revision` (an OCI tag matching SemVer 2.0) in the ApplicationDescription and ApplicationDeployment manifests.
+Compose components MUST be stored in an OCI-compliant Component Registry and referenced via `repository` (an `oci://` URI) and `revision` (an OCI tag derived from a SemVer 2.0 version by replacing `+` with `_`) in the ApplicationDescription and ApplicationDeployment manifests.
 
 The OCI image manifest for a Compose component MUST use `artifactType` = `application/vnd.org.margo.component.compose+json`. The single layer blob MUST use `mediaType` = `application/vnd.org.margo.component.compose.tar+gzip`.
 
@@ -17,12 +17,12 @@ The OCI image manifest for a Compose component MUST use `artifactType` = `applic
 
 ### Compose Component Annotation Keys
 
-The following annotations MUST be set on the layer descriptor when pushing a Compose Archive to an OCI registry:
+The following annotations MUST be set on the OCI image manifest when pushing a Compose Archive to an OCI registry:
 
 | Annotation Key | Required? | Description |
 |----------------|-----------|-------------|
 | `org.margo.component.type` | REQUIRED | MUST be `compose`. Matches the `DeploymentProfile.type` enum value. |
-| `org.margo.component.version` | REQUIRED | SemVer 2.0 version without leading `v`. MUST match the OCI tag and `ComponentProperties.revision`. |
+| `org.margo.component.version` | REQUIRED | SemVer 2.0 version without leading `v`. Replacing `+` with `_` MUST yield the OCI tag and `ComponentProperties.revision`. |
 | `org.opencontainers.image.title` | RECOMMENDED | Human-readable component name. |
 | `org.opencontainers.image.authors` | RECOMMENDED | Author or organization (e.g., `ACME Corp (maintainer@example.com)`). |
 | `org.opencontainers.image.description` | RECOMMENDED | Short description of the component. |

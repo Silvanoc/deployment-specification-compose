@@ -1,0 +1,58 @@
+id: https://margo.org/models/compose-registry
+name: compose-registry
+description: Annotation keys on a Compose Archive OCI image manifest.
+prefixes:
+  linkml: https://w3id.org/linkml/
+  margo: https://margo.org/models/compose-registry/
+default_prefix: margo
+default_range: string
+imports:
+  - linkml:types
+
+classes:
+  ComposeComponentAnnotations:
+    tree_root: true
+    description: >-
+      Structured annotations on a Compose Archive OCI image manifest. The
+      version, with + replaced by _, must match the OCI tag and ComponentProperties.revision;
+      the optional image version must match it when present. These cross-field
+      and external relationships are not enforced by this schema.
+    extra_slots:
+      allowed: true
+      range_expression:
+        range: string
+    attributes:
+      org.margo.component.type:
+        description: 'MUST be `compose`. Matches the `DeploymentProfile.type` enum value.'
+        annotations:
+          requirement: REQUIRED
+        required: true
+        equals_string: compose
+      org.margo.component.version:
+        description: 'SemVer 2.0 version without leading `v`. Replacing `+` with `_` MUST yield the OCI tag and `ComponentProperties.revision`.'
+        annotations:
+          requirement: REQUIRED
+          margo_oci_tag_encoding: semver_plus_as_underscore
+        required: true
+        pattern: '^(?=.{1,128}$)(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(?![\s\S])'
+      org.opencontainers.image.title:
+        description: Human-readable component name.
+        annotations:
+          requirement: RECOMMENDED
+          margo_disallow_null: 'true'
+      org.opencontainers.image.authors:
+        description: 'Author or organization (e.g., `ACME Corp (maintainer@example.com)`).'
+        annotations:
+          requirement: RECOMMENDED
+          margo_disallow_null: 'true'
+      org.opencontainers.image.description:
+        description: Short description of the component.
+        annotations:
+          requirement: RECOMMENDED
+          margo_disallow_null: 'true'
+      org.opencontainers.image.version:
+        description: 'MUST equal `org.margo.component.version` if set.'
+        annotations:
+          requirement: RECOMMENDED
+          margo_disallow_null: 'true'
+          margo_equal_to: org.margo.component.version

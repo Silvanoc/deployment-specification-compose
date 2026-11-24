@@ -1,0 +1,12 @@
+{
+  "properties": {
+    "interfaces": [
+      {
+        "type": "ethernet"
+      },
+      {
+        "type": "wifi"
+      }
+    ]
+  }
+}

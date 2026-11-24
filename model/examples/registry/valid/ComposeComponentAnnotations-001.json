@@ -1,0 +1,8 @@
+{
+  "org.margo.component.type": "compose",
+  "org.margo.component.version": "1.0.0",
+  "org.opencontainers.image.title": "myapp",
+  "org.opencontainers.image.version": "1.0.0",
+  "org.opencontainers.image.authors": "ACME Corp (maintainer@example.com)",
+  "org.opencontainers.image.description": "My application workload"
+}

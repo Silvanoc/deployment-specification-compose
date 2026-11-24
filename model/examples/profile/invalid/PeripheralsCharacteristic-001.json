@@ -1,0 +1,13 @@
+{
+  "properties": {
+    "peripherals": [
+      {
+        "type": "gpu",
+        "manufacturer": "NVIDIA"
+      },
+      {
+        "type": "microphone"
+      }
+    ]
+  }
+}

@@ -20,6 +20,79 @@ The following pages define the additional requirements for supporting the Compos
 - [Workload Target Requirements Supplemental Material](./specification/margo-workload-targets/workload-target-requirements.md)
 - [Collecting Workload Observability Data Supplemental Material](./specification/observability/collecting-workload-observability-data.md)
 
+## Data models and generated documentation
+
+The LinkML schemas in [`model/`](./model/) describe Compose profile
+characteristics, Application Descriptions and Compose component manifest
+annotations. The schemas and their example fixtures are inputs to the
+documentation and validation tools. The Application Description model is
+adapted from the shared specification with Compose-specific changes; see the
+compatibility report for differences and remaining validation gaps.
+
+Common Application Description definitions are imported from the core
+specification's `application-description.linkml.yaml` via the raw GitHub URL
+on the `externalize-component-specs` branch. Generation and validation require
+that URL to be reachable. The import follows a moving branch and
+is therefore not version-pinned. Generation and validation fetch the remote
+schema independently, and it can change between checks. Numeric-source
+verification therefore cannot guarantee consistency with the schema consumed
+by LinkML until the dependency is immutable or snapshotted.
+
+With [uv](https://docs.astral.sh/uv/) installed, validate the examples and
+generate and check the Markdown and JSON Schemas with:
+
+```bash
+uv sync --locked
+uv run --locked python tools/check_examples.py
+uv run --locked python tools/generate.py --check
+```
+
+Run the workflow tests with `uv run --locked python -m unittest discover -s tests -v`.
+An optional [`justfile`](./justfile) provides shortcuts for these commands.
+
+The generated supplemental pages are in `build/site/specification/` and are
+checked against the corresponding source pages. Generated JSON Schemas are in
+`build/artifacts/json-schemas/`; `build/` is disposable generated output. The
+three model-driven pages combine the LinkML schemas with Markdown sources in
+`content/`, using formatting templates in `tools/templates/`. Edit the models
+or Markdown sources when changing content, then review the generated pages
+against the checked-in pages. The remaining two pages contain prose and are
+copied unchanged. The profile template iterates over the model's annotated
+characteristic classes, and documented JSON and YAML examples are inserted
+from the validated fixture files.
+
+The example checker compares the modeled examples with valid fixtures and checks
+that valid and invalid fixtures pass and fail, respectively. These structural
+checks do not replace the normative prose, validate every core-specification
+or OCI requirement, or verify archive contents, deployment behavior or
+relationships with an OCI registry.
+
+Fixtures are discovered under `model/examples/<model>/valid/` and
+`model/examples/<model>/invalid/`. Name each file `<ClassName>-<name>.yaml`
+or `<ClassName>-<name>.json` so the checker can select its LinkML class.
+
+To validate another document, select its schema and target class:
+
+```bash
+uv run --locked python tools/validate.py --schema model/compose-application.linkml.yaml --target-class ApplicationDescription path/to/application.yaml
+```
+
+The generated JSON Schemas contain additional `x-margo-*` metadata for rules
+that ordinary JSON Schema cannot express. Use this validation script to check
+those rules as well. When validating Compose component annotations, optional
+`--tag` and `--revision` arguments enable comparison with those external
+values; no registry is contacted. The script reports when external comparisons
+were not performed.
+
+The validation script preserves parsed empty objects and checks additional
+rules such as characteristic-key uniqueness and annotation equality. An
+ordinary JSON Schema validator may ignore the `x-margo-*` metadata and will
+not perform every one of these checks. Optional typed Application Description
+fields may be omitted, but an explicitly supplied `null` is rejected.
+
+See [Compatibility issues and inconsistencies](./COMPATIBILITY-ISSUES.md) for
+the differences from the shared specification and unresolved questions.
+
 ## Local Registries
 
 This section describes options for configuring local registries to avoid reliance on public Internet-accessible registries for situations where the Application Package and workload artifacts are not accessible via the internet.

@@ -1,0 +1,7 @@
+{%- if rows_only is not defined or not rows_only -%}
+{{ '# ' ~ element.name ~ '\n\n| Field | Requirement | Description |\n| --- | --- | --- |\n' }}
+{%- endif -%}
+{%- for slot in schemaview.class_induced_slots(element.name) -%}
+{{ '| `' ~ slot.name ~ '` | ' ~ (slot.annotations['requirement'].value if 'requirement' in slot.annotations else '') ~ ' | ' ~ slot.description ~ ' |' }}
+{%- if not loop.last %}{{ '\n' }}{% endif -%}
+{%- endfor -%}

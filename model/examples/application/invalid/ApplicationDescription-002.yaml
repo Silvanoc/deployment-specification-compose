@@ -1,0 +1,7 @@
+apiVersion: v1
+deploymentProfiles:
+  - key: margo.org/deployment/compose
+    components:
+      - name: example
+        properties:
+          wait: [not-a-boolean]
