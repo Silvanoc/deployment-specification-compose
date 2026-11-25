@@ -61,7 +61,8 @@ An optional [`justfile`](./justfile) provides shortcuts for these commands.
 Use this repository's `tools/generate.py` and `tools/validate.py`, or `just
 check`, for key-based subtype dispatch. A bare LinkML JSON Schema generator can
 accept a permissive base branch and does not by itself enforce known deployment
-keys' constraints. The generated JSON Schema enforces structural constraints;
+keys' constraints or the native `has_member` required-characteristic constraints.
+The generated JSON Schema enforces structural constraints;
 the validation tools also enforce the `x-margo` semantic checks.
 
 The generated supplemental pages are in `build/site/specification/` and are

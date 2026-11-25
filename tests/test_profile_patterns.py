@@ -139,8 +139,9 @@ class ProfilePatternsTest(unittest.TestCase):
                 self.assertEqual(json.loads(fixture.read_text())["key"], key)
 
     def test_required_characteristics_match_presentation(self):
-        slot = self.view.induced_slot("characteristics", "ComposeProfile")
-        required = json.loads(slot.annotations["margo_required_characteristics"].value)
+        expressions = self.view.get_class('ComposeProfile').all_of
+        required_classes = [e.slot_conditions['characteristics'].has_member.range for e in expressions]
+        required = [self.view.induced_slot('key', name).equals_string for name in required_classes]
         displayed = [
             self.view.induced_slot(
                 "key", cls.annotations["margo_profile_characteristic"].value

@@ -26,7 +26,6 @@ classes:
         equals_string: margo.org/deployment/compose
       components:
         range: ComposeComponent
-
   ComposeComponent:
     is_a: Component
     extra_slots:
@@ -34,7 +33,6 @@ classes:
     slot_usage:
       properties:
         range: ComposeComponentProperties
-
   ComposeComponentProperties:
     is_a: OCIComponentProperties
     extra_slots:
@@ -43,7 +41,6 @@ classes:
       wait:
         description: >-
           The `component.properties.wait` property: if `wait` is set to `true` for a Compose component, the device MUST wait until all containers in the Compose project reach **running** state before reporting the deployment as successful. This is equivalent to `docker compose up` or `podman-compose up` completing synchronously without `--detach`. If any container exits with a non-zero exit code during startup, the deployment MUST be reported as failed immediately. If health checks are defined in `compose.yaml`, implementations SHOULD additionally wait for all containers to reach **healthy** state before reporting success.
-
   ComposeParameterTarget:
     is_a: ParameterTarget
     slot_usage:
