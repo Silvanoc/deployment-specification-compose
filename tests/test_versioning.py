@@ -34,7 +34,7 @@ class VersionEncodingTests(unittest.TestCase):
                       "org.margo.component.version": version}
         component = {"repository": "oci://registry.example.com/example", "revision": tag}
         self.assertEqual(self.validate("compose-registry.linkml.yaml", "ComposeComponentAnnotations", annotation).returncode, 0)
-        self.assertEqual(self.validate("compose-application.linkml.yaml", "ComponentProperties", component).returncode, 0)
+        self.assertEqual(self.validate("compose-application.linkml.yaml", "ComposeComponentProperties", component).returncode, 0)
 
     def test_version_and_tag_reject_wrong_separator_and_long_tag(self):
         annotation = {"org.margo.component.type": "compose",
@@ -43,7 +43,7 @@ class VersionEncodingTests(unittest.TestCase):
         for revision in ("1.2.3+build.1", "1.2.3_" + "a" * 123):
             with self.subTest(revision=revision):
                 component = {"repository": "oci://registry.example.com/example", "revision": revision}
-                self.assert_invalid(self.validate("compose-application.linkml.yaml", "ComponentProperties", component))
+                self.assert_invalid(self.validate("compose-application.linkml.yaml", "ComposeComponentProperties", component))
 
     def test_oci_tag_length_boundary(self):
         version = "1.2.3+" + "a" * 122
@@ -53,7 +53,7 @@ class VersionEncodingTests(unittest.TestCase):
                       "org.margo.component.version": version}
         component = {"repository": "oci://registry.example.com/example", "revision": tag}
         self.assertEqual(self.validate("compose-registry.linkml.yaml", "ComposeComponentAnnotations", annotation).returncode, 0)
-        self.assertEqual(self.validate("compose-application.linkml.yaml", "ComponentProperties", component).returncode, 0)
+        self.assertEqual(self.validate("compose-application.linkml.yaml", "ComposeComponentProperties", component).returncode, 0)
 
 
 if __name__ == "__main__":

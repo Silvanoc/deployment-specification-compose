@@ -33,9 +33,9 @@ class ApplicationCompatibilityTests(unittest.TestCase):
     def test_inherited_slots_and_extension_metadata(self):
         self.assertIn("linkml:types", self.view.schema.imports)
         self.assertEqual(self.view.schema.annotations["margo_optional_typed_nonnull"].value, "true")
-        self.assertTrue(self.view.schema.classes["ApplicationDescription"].tree_root)
+        self.assertTrue(self.view.get_class("ApplicationDescription").tree_root)
         for cls in ("ApplicationDescription", "DeploymentProfile", "Component"):
-            self.assertEqual(self.view.schema.classes[cls].annotations["margo_extensions_pattern"].value,
+            self.assertEqual(self.view.get_class(cls).annotations["margo_extensions_pattern"].value,
                              r"^x-[a-z][a-z0-9-]*-extensions(?![\s\S])")
             self.assertNotIn("x-placeholder-extensions", {s.name for s in self.view.class_induced_slots(cls)})
         slots = {s.name: s for s in self.view.class_induced_slots("ComposeDeploymentProfile")}
@@ -81,18 +81,18 @@ class ApplicationCompatibilityTests(unittest.TestCase):
             expected = dict(groups)
             if cls == "MatchExpression":
                 expected["object_array"] = ["ContainsAll", "ContainsAny"]
-            annotation = self.view.schema.classes[cls].annotations["margo_selector_rules"]
+            annotation = self.view.get_class(cls).annotations["margo_selector_rules"]
             self.assertEqual(json.loads(annotation.value), expected)
 
     def test_timeout_and_required_profile_fields(self):
-        slots = {s.name: s for s in self.view.class_induced_slots("ComponentProperties")}
+        slots = {s.name: s for s in self.view.class_induced_slots("ComposeComponentProperties")}
         for field in ("wait", "timeout"):
             self.assertEqual(slots[field].annotations["margo_disallow_null"].value, "true")
         self.assertEqual(slots["repository"].annotations["margo_oci_repository"].value, "true")
         properties = {"repository": "oci://registry.example.com/example", "revision": "1.0.0"}
-        self.assertTrue(self.valid("ComponentProperties", properties))
-        self.assertTrue(self.valid("ComponentProperties", {**properties, "timeout": "5m0s"}))
-        self.assertFalse(self.valid("ComponentProperties", {**properties, "timeout": "five"}))
+        self.assertTrue(self.valid("ComposeComponentProperties", properties))
+        self.assertTrue(self.valid("ComposeComponentProperties", {**properties, "timeout": "5m0s"}))
+        self.assertFalse(self.valid("ComposeComponentProperties", {**properties, "timeout": "five"}))
         component = {"name": "main", "properties": properties}
         self.assertTrue(self.valid("ComponentListFragment", {"components": [component]}))
         self.assertFalse(self.valid("DeploymentProfile", {"components": [component]}))
@@ -114,12 +114,12 @@ class ApplicationCompatibilityTests(unittest.TestCase):
         app.pop("configuration", None)
         properties = {"repository": "oci://registry.example.com/example", "revision": "1.0.0_build.1", "timeout": "5m0s"}
         self.assertTrue(self.valid("ApplicationDescription", app))
-        self.assertTrue(self.valid("ComponentProperties", properties))
+        self.assertTrue(self.valid("ComposeComponentProperties", properties))
         for ending in ("\n", "\r\n"):
             with self.subTest(ending=repr(ending)):
                 self.assertFalse(self.valid("ApplicationDescription", {**app, "id": app["id"] + ending}))
                 for field in ("revision", "timeout"):
-                    self.assertFalse(self.valid("ComponentProperties", {**properties, field: properties[field] + ending}))
+                    self.assertFalse(self.valid("ComposeComponentProperties", {**properties, field: properties[field] + ending}))
 
     def test_generator_no_include_null(self):
         result = subprocess.run(["gen-json-schema", "--no-include-null", str(MODEL)],
@@ -136,8 +136,8 @@ class ApplicationCompatibilityTests(unittest.TestCase):
             ("ApplicationMetadata", {}, "tagline", "text"),
             ("ApplicationMetadata", {}, "tags", ["tag"]),
             ("DeploymentProfile", {"id": "x", "key": "margo.org/deployment/compose", "components": []}, "description", "text"),
-            ("ComponentProperties", {"repository": "oci://registry.example.com/example", "revision": "1.0.0"}, "wait", True),
-            ("ComponentProperties", {"repository": "oci://registry.example.com/example", "revision": "1.0.0"}, "timeout", "5m0s"),
+            ("ComposeComponentProperties", {"repository": "oci://registry.example.com/example", "revision": "1.0.0"}, "wait", True),
+            ("ComposeComponentProperties", {"repository": "oci://registry.example.com/example", "revision": "1.0.0"}, "timeout", "5m0s"),
         )
         for cls, base, field, value in cases:
             with self.subTest(cls=cls, field=field):

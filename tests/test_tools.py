@@ -177,11 +177,11 @@ class GenerationTests(unittest.TestCase):
                 standard = json.loads(fixture_text) if path.suffix == ".json" else yaml.safe_load(fixture_text)
                 self.assertEqual(validator.is_valid(standard), valid, f"{name} {kind} standard")
         profile = self.root / "model/compose-profile.linkml.yaml"
-        profile.write_text(profile.read_text().replace("Defines how many cores the CPU has available.", "Changed core description."))
+        profile.write_text(profile.read_text().replace("title: Compose Deployment Technology Support", "title: Changed Deployment Support"))
         with self.assertRaisesRegex(ValueError, "differs"):
             generate.generate(self.root, check=True)
         output = self.root / "build/site/specification/margo-management-interface/compose-profile-characteristics.md"
-        self.assertIn("Changed core description.", output.read_text())
+        self.assertIn("Changed Deployment Support", output.read_text())
 
     def test_fragment_change_changes_output(self):
         fragment = self.root / "content/profile.md"

@@ -112,11 +112,11 @@ class SchemaValidationTests(unittest.TestCase):
             self.assertTrue(self.validate(self.registry_schema, 'ComposeComponentAnnotations', obj)[0])
         app = ROOT / 'model/compose-application.linkml.yaml'
         component = {'repository': 'oci://localhost:5000/team/name', 'revision': '1.0.0'}
-        self.assertFalse(self.validate(app, 'ComponentProperties', component)[0])
+        self.assertFalse(self.validate(app, 'ComposeComponentProperties', component)[0])
         for key in ('wait', 'timeout'):
             obj = dict(component, **{key: None})
-            self.assertTrue(self.validate(app, 'ComponentProperties', obj)[0], key)
-        self.assertFalse(self.validate(app, 'ComponentProperties', dict(component, wait=False, timeout='5m0s'))[0])
+            self.assertTrue(self.validate(app, 'ComposeComponentProperties', obj)[0], key)
+        self.assertFalse(self.validate(app, 'ComposeComponentProperties', dict(component, wait=False, timeout='5m0s'))[0])
         self.assertFalse(self.validate(self.profile_schema, 'CpuProperties', {'cpus': None})[0])
         for klass, base, key, good in (('Cpu', {'cores': 1}, 'architecture', 'amd64'), ('Peripheral', {'type': 'gpu'}, 'manufacturer', ''), ('Peripheral', {'type': 'gpu'}, 'model', 'test')):
             for value, valid in ((None, False), (good, True)):
@@ -206,15 +206,15 @@ class SchemaValidationTests(unittest.TestCase):
         for uri in valid + invalid:
             with self.subTest(uri=uri):
                 data = {'repository': uri, 'revision': '1.0.0'}
-                self.assertEqual(not self.validate(schema, 'ComponentProperties', data)[0], uri in valid)
+                self.assertEqual(not self.validate(schema, 'ComposeComponentProperties', data)[0], uri in valid)
         fixture = ROOT / 'model/examples/application/valid/ApplicationDescription-001.yaml'
         app = parse_data(fixture.read_text(), '.yaml')
         self.assertFalse(self.validate(schema, 'ApplicationDescription', app)[0])
         app['deploymentProfiles'][0]['components'][0]['properties']['repository'] = 'oci://registry.example/repo:tag'
         self.assertTrue(any('OCI repository URI' in e for e in self.validate(schema, 'ApplicationDescription', app)[0]))
-        artifact = generated_schema(schema, 'ComponentProperties')
+        artifact = generated_schema(schema, 'ComposeComponentProperties')
         self.assertTrue(artifact['properties']['repository']['x-margo-oci-repository'])
-        self.assertTrue(artifact['$defs']['ComponentProperties']['properties']['repository']['x-margo-oci-repository'])
+        self.assertTrue(artifact['$defs']['ComposeComponentProperties']['properties']['repository']['x-margo-oci-repository'])
 
     def test_select_options_follow_declared_scalar_type(self):
         schema = ROOT / 'model/compose-application.linkml.yaml'

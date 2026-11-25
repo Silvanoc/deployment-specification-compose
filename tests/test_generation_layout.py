@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlsplit
+from urllib.request import urlopen
 
 import yaml
 from jinja2 import Environment, TemplateError, nodes
@@ -83,11 +85,21 @@ class GenerationLayoutTests(unittest.TestCase):
 
     def test_model_and_source_changes_appear(self):
         model = self.root / "model/compose-profile.linkml.yaml"
-        text = model.read_text().replace("Defines how many cores the CPU has available.", "A changed core description.")
+        view = SchemaView(str(model))
+        source_id = next(i for i in view.imports_closure() if i.endswith('workload-target-characteristics.linkml'))
+        source = view.schema_map[source_id].source_file
+        if urlsplit(source).scheme in ('http', 'https'):
+            with urlopen(source, timeout=30) as response:
+                text = response.read().decode('utf-8')
+        else:
+            text = Path(source).read_text()
+        text = text.replace("Defines how many cores the CPU has available, in decimal units", "A changed core description. In decimal units")
         text = text.replace("title: CPUs\n    rank: 20", "title: Processor\n    rank: 45")
         text = text.replace("equals_string: margo.org/resource/cpu", "equals_string: example/processor")
         text = text.replace("Indicates the peripherals available on the workload target.", "Changed peripheral description.")
-        model.write_text(text)
+        shared = self.root / 'model/shared-characteristics.yaml'
+        shared.write_text(text)
+        model.write_text(model.read_text().replace(source_id, str(shared.with_suffix(''))))
         source = self.root / "content/profile.md"
         source.write_text(source.read_text().replace("# Compose Profile Characteristics", "# Changed Profile Title"))
         generate.generate(self.root)
@@ -115,7 +127,7 @@ class GenerationLayoutTests(unittest.TestCase):
         schema = self.root / "model/compose-application.linkml.yaml"
         for extra in ("{{ missing_context }}", "{% include 'model/../README.md' %}",
                       "{% include 'model/missing.jinja2' %}",
-                      "{{ schemaview.induced_slot('wait', 'ComponentProperties').description }}"):
+                      "{{ schemaview.induced_slot('wait', 'ComposeComponentProperties').description }}"):
             source.write_text(original + "\n" + extra)
             with self.assertRaises((ValueError, TemplateError)):
                 generate.render_page("application", self.root, schema)

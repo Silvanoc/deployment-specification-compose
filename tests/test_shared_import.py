@@ -27,9 +27,10 @@ class SharedImportTests(unittest.TestCase):
                     'BooleanValidationSchema', 'NumericIntegerValidationSchema',
                     'NumericDoubleValidationSchema', 'SelectValidationSchema'}
         self.assertTrue(expected.issubset(shared.classes))
-        for name in expected:
-            self.assertIs(view.get_class(name), shared.classes[name])
-        self.assertIs(view.get_class('ApplicationDescription'), view.schema.classes['ApplicationDescription'])
+        for name in expected | {'ApplicationDescription'}:
+            effective = view.get_class(name)
+            self.assertEqual(effective, shared.classes[name])
+            self.assertEqual(effective.from_schema, shared.id)
         self.assertEqual(view.get_uri(view.get_class('DeploymentProfile'), expand=True), 'https://specification.margo.org/DeploymentProfile')
         slots = {slot.name: slot for slot in view.class_induced_slots('Metadata')}
         self.assertTrue(slots['name'].required)

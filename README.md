@@ -25,17 +25,26 @@ The following pages define the additional requirements for supporting the Compos
 The LinkML schemas in [`model/`](./model/) describe Compose profile
 characteristics, Application Descriptions and Compose component manifest
 annotations. The schemas and their example fixtures are inputs to the
-documentation and validation tools. The Application Description model is
-adapted from the shared specification with Compose-specific changes; see the
+documentation and validation tools. The Application Description model imports
+the shared model and adds Compose-specific constraints; see the
 compatibility report for differences and remaining validation gaps.
+Compose-specific constraints apply to Compose-key deployment profiles. Other
+keys are checked against the shared model only and reported as generic-only
+unless their specializations are loaded. To register a loaded deployment type,
+subclass `DeploymentProfile` and set a unique `slot_usage.key.equals_string`;
+unknown keys remain generic-only.
+An importing bundle must declare `margo-common` as
+`https://raw.githubusercontent.com/Silvanoc/margo-specification/externalize-component-specs/model/`;
+otherwise LinkML may raise `Unknown CURIE prefix: margo-common` while resolving
+transitive imports.
 
-Common Application Description definitions are imported from the core
-specification's `application-description.linkml.yaml` via the raw GitHub URL
-on the `externalize-component-specs` branch. Generation and validation require
-that URL to be reachable. The import follows a moving branch and
-is therefore not version-pinned. Generation and validation fetch the remote
-schema independently, and it can change between checks. Numeric-source
-verification therefore cannot guarantee consistency with the schema consumed
+Common Application Description, OCI component and workload-target characteristic
+definitions are imported from the core specification via raw GitHub URLs on
+the `externalize-component-specs` branch. Generation and validation require
+those URLs to be reachable. The imports follow a moving branch and
+are therefore not version-pinned. Generation and validation fetch the remote
+schemas independently, and they can change between checks. Numeric-source
+verification therefore cannot guarantee consistency with the schemas consumed
 by LinkML until the dependency is immutable or snapshotted.
 
 With [uv](https://docs.astral.sh/uv/) installed, validate the examples and
@@ -49,6 +58,11 @@ uv run --locked python tools/generate.py --check
 
 Run the workflow tests with `uv run --locked python -m unittest discover -s tests -v`.
 An optional [`justfile`](./justfile) provides shortcuts for these commands.
+Use this repository's `tools/generate.py` and `tools/validate.py`, or `just
+check`, for key-based subtype dispatch. A bare LinkML JSON Schema generator can
+accept a permissive base branch and does not by itself enforce known deployment
+keys' constraints. The generated JSON Schema enforces structural constraints;
+the validation tools also enforce the `x-margo` semantic checks.
 
 The generated supplemental pages are in `build/site/specification/` and are
 checked against the corresponding source pages. Generated JSON Schemas are in

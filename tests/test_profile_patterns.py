@@ -49,7 +49,7 @@ class ProfilePatternsTest(unittest.TestCase):
                 )
 
     def test_unknown_key_excludes_only_exact_known_keys(self):
-        validator = self.key_validator("OtherCharacteristic")
+        validator = self.key_validator("ComposeOtherCharacteristic")
         for key in KNOWN.values():
             self.assertFalse(validator.is_valid(key), key)
             for suffix in ("\n", "\r\n", "/other"):
