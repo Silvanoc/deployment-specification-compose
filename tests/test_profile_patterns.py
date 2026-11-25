@@ -58,7 +58,7 @@ class ProfilePatternsTest(unittest.TestCase):
             self.assertTrue(validator.is_valid(key), repr(key))
 
     def test_extension_metadata_pattern_has_absolute_end(self):
-        pattern = self.view.get_class("ComposeProfile").annotations["margo_extensions_pattern"].value
+        pattern = self.view.get_class("WorkloadTargetProfile").annotations["margo_extensions_pattern"].value
         for value in ("x-a-extensions", "x-vendor-name-extensions"):
             self.assertIsNotNone(re.search(pattern, value))
             for suffix in ("\n", "\r\n"):

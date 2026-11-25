@@ -68,7 +68,8 @@ class SchemaValidationTests(unittest.TestCase):
             data[key] = value
             self.assertEqual(not self.validate(self.profile_schema, 'ComposeProfile', data)[0], valid, key)
         artifact = generated_schema(self.profile_schema)
-        pattern = SchemaView(str(self.profile_schema)).get_class('ComposeProfile').annotations['margo_extensions_pattern'].value
+        view = SchemaView(str(self.profile_schema))
+        pattern = view.get_class('WorkloadTargetProfile').annotations['margo_extensions_pattern'].value
         self.assertEqual(artifact['patternProperties'][pattern], {'type': 'object'})
         self.assertIn('allOf', artifact['properties']['characteristics'])
         self.assertEqual(artifact['properties']['characteristics']['x-margo-unique-by'], 'key')
