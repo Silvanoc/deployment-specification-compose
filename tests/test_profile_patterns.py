@@ -1,14 +1,19 @@
 import json
 import re
 import subprocess
+import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from jsonschema import Draft202012Validator
 from linkml_runtime.utils.schemaview import SchemaView
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'tools'))
+import check_examples
 SCHEMA = ROOT / "model/compose-profile.linkml.yaml"
 KNOWN = {
     "ComposeDeploymentCharacteristic": "margo.org/deployment/compose",
@@ -33,20 +38,45 @@ class ProfilePatternsTest(unittest.TestCase):
     def key_validator(self, name):
         return Draft202012Validator(self.definitions[name]["properties"]["key"])
 
-    def test_known_keys_have_absolute_end(self):
+    def test_known_keys_use_exact_const_without_pattern(self):
         for cls, key in KNOWN.items():
             with self.subTest(cls=cls):
                 validator = self.key_validator(cls)
                 self.assertTrue(validator.is_valid(key))
                 slot = self.view.induced_slot("key", cls)
                 self.assertEqual(slot.equals_string, key)
-                self.assertIsNotNone(re.search(slot.pattern, slot.equals_string))
-                for suffix in ("\n", "\r\n"):
+                self.assertIsNone(slot.pattern)
+                self.assertEqual(self.definitions[cls]["properties"]["key"]["const"], key)
+                self.assertNotIn("pattern", self.definitions[cls]["properties"]["key"])
+                for suffix in ("\n", "\r\n", "/other"):
                     self.assertFalse(validator.is_valid(key + suffix))
-                self.assertEqual(
-                    self.view.induced_slot("key", cls).pattern,
-                    self.definitions[cls]["properties"]["key"]["pattern"],
-                )
+
+    def test_profile_target_uses_exact_equality(self):
+        for cls, key in KNOWN.items():
+            self.assertEqual(check_examples.profile_target({'key': key}, SCHEMA), cls)
+            for suffix in ('\n', '\r\n', '/other'):
+                with self.assertRaisesRegex(ValueError, 'matches 0'):
+                    check_examples.profile_target({'key': key + suffix}, SCHEMA)
+
+    def test_profile_target_pattern_only_both_and_ambiguous_metadata(self):
+        with patch.object(check_examples, 'PROFILE_CLASSES', ('One', 'Two')):
+            view = SimpleNamespace(induced_slot=lambda key, name: slots[name])
+            with patch.object(check_examples, 'SchemaView', return_value=view):
+                slots = {'One': SimpleNamespace(equals_string=None, pattern=r'foo.*'),
+                         'Two': SimpleNamespace(equals_string='bar', pattern=r'bar')}
+                self.assertEqual(check_examples.profile_target({'key': 'foo42'}, SCHEMA), 'One')
+                self.assertEqual(check_examples.profile_target({'key': 'bar'}, SCHEMA), 'Two')
+                with self.assertRaisesRegex(ValueError, 'matches 0'):
+                    check_examples.profile_target({'key': 'bar\n'}, SCHEMA)
+                slots['Two'] = SimpleNamespace(equals_string='bar', pattern='no-match')
+                with self.assertRaisesRegex(ValueError, 'matches 0'):
+                    check_examples.profile_target({'key': 'bar'}, SCHEMA)
+                slots['Two'] = SimpleNamespace(equals_string='foo42', pattern=None)
+                with self.assertRaisesRegex(ValueError, 'matches 2'):
+                    check_examples.profile_target({'key': 'foo42'}, SCHEMA)
+                slots['Two'] = SimpleNamespace(equals_string=None, pattern=None)
+                with self.assertRaisesRegex(ValueError, 'Missing key equality or pattern'):
+                    check_examples.profile_target({'key': 'foo42'}, SCHEMA)
 
     def test_unknown_key_excludes_only_exact_known_keys(self):
         validator = self.key_validator("ComposeOtherCharacteristic")

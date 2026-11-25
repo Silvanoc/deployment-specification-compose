@@ -30,9 +30,10 @@ def profile_target(data, schema):
     matches = []
     for name in PROFILE_CLASSES:
         slot = view.induced_slot("key", name)
-        if not slot or not slot.pattern:
-            raise ValueError(f"Missing key pattern for {name}")
-        if re.fullmatch(slot.pattern, key):
+        if not slot or (slot.equals_string is None and slot.pattern is None):
+            raise ValueError(f"Missing key equality or pattern for {name}")
+        if ((slot.equals_string is None or slot.equals_string == key)
+                and (slot.pattern is None or re.fullmatch(slot.pattern, key))):
             matches.append(name)
     if len(matches) != 1:
         raise ValueError(f"Profile key {key!r} matches {len(matches)} characteristic classes")
