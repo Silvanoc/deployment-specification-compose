@@ -68,8 +68,9 @@ the validation tools also enforce the `x-margo` semantic checks.
 The generated supplemental pages are in `build/site/specification/` and are
 checked against the corresponding source pages. Generated JSON Schemas are in
 `build/artifacts/json-schemas/`; `build/` is disposable generated output. The
-three model-driven pages combine the LinkML schemas with Markdown sources in
-`content/`, using formatting templates in `tools/templates/`. Edit the models
+three generated pages combine Markdown sources in `content/` with validated
+examples and, where needed, LinkML model data and formatting templates in
+`tools/templates/`. Edit the models
 or Markdown sources when changing content, then review the generated pages
 against the checked-in pages. The remaining two pages contain prose and are
 copied unchanged. The profile template iterates over the model's annotated

@@ -161,9 +161,12 @@ class GenerationLayoutTests(unittest.TestCase):
         source = self.root / "content/application.md"
         original = source.read_text()
         schema = self.root / "model/compose-application.linkml.yaml"
+        duplicate = "{{ schemaview.induced_slot('wait', 'ComposeComponentProperties').description }}"
         for extra in ("{{ missing_context }}", "{% include 'model/../README.md' %}",
                       "{% include 'model/missing.jinja2' %}",
-                      "{{ schemaview.induced_slot('wait', 'ComposeComponentProperties').description }}"):
+                      "{{ schemaview.induced_slot('wait', 'MissingClass').description }}",
+                      "{{ schemaview.induced_slot('missingSlot', 'ComposeComponentProperties').description }}",
+                      duplicate + duplicate):
             source.write_text(original + "\n" + extra)
             with self.assertRaises((ValueError, TemplateError)):
                 generate.render_page("application", self.root, schema)
@@ -180,6 +183,24 @@ class GenerationLayoutTests(unittest.TestCase):
             profile_path.write_text(profile.replace("{{ profile_group('deployment') }}", replacement))
             with self.assertRaises(ValueError):
                 generate.render_page("profile", self.root, schema)
+
+    def test_application_prose_without_model_references(self):
+        content = (self.root / 'content/application.md').read_text()
+        authored = (self.root / 'specification/applications/application-description.md').read_text()
+        bullets = [line for line in authored.splitlines() if line.startswith(
+            ('- The `component.properties.wait`', '- The `parameter.targets[].pointer`'))]
+        self.assertEqual(len(bullets), 2)
+        for line in bullets:
+            self.assertIn(line, content.splitlines())
+        self.assertNotIn('schemaview', content)
+        schema = self.root / 'model/compose-application.linkml.yaml'
+        self.assertEqual(generate.render_page('application', self.root, schema), authored)
+        view = SchemaView(str(schema))
+        self.assertIsNone(view.get_class('ComposeParameterTarget'))
+        self.assertIsNotNone(view.get_class('ParameterTarget'))
+        slot = view.induced_slot('wait', 'ComposeComponentProperties')
+        self.assertEqual(slot.range, 'boolean')
+        self.assertEqual(slot.annotations['margo_disallow_null'].value, 'true')
 
     def test_fixture_jinja_is_not_evaluated(self):
         fixture = self.root / "model/examples/application/valid/ApplicationDescription-001.yaml"

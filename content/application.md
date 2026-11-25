@@ -6,8 +6,8 @@ The following content supplements the [Application Description](https://docs.mar
 
 The following defines how certain properties in the Application Description file are handled specifically for Compose workloads. Workload target implementation MUST apply these rules when installing Compose workloads.
 
-- {{ schemaview.induced_slot('wait', 'ComposeComponentProperties').description }}
-- {{ schemaview.induced_slot('pointer', 'ComposeParameterTarget').description }}
+- The `component.properties.wait` property: if `wait` is set to `true` for a Compose component, the device MUST wait until all containers in the Compose project reach **running** state before reporting the deployment as successful. This is equivalent to `docker compose up` or `podman-compose up` completing synchronously without `--detach`. If any container exits with a non-zero exit code during startup, the deployment MUST be reported as failed immediately. If health checks are defined in `compose.yaml`, implementations SHOULD additionally wait for all containers to reach **healthy** state before reporting success.
+- The `parameter.targets[].pointer` MUST be the environment variable name the Compose files expect to use.
 
 ## Example Application Description
 
