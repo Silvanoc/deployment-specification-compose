@@ -127,12 +127,11 @@ class ProfilePatternsTest(unittest.TestCase):
                     "margo_profile_characteristic": root,
                     "margo_profile_example": f"profile/{root}-001.json",
                 }
-                if kind == "deployment":
-                    expected_annotations.update({
-                        "margo_profile_label": "Compose Deployment Technology",
-                        "margo_profile_note": "The properties for the Compose deployment technology will be defined once the deployment technology specifications are separated from the core specification.",
-                    })
                 self.assertEqual(annotations, expected_annotations)
+                if kind == "deployment":
+                    properties = self.view.get_class(self.view.induced_slot('properties', root).range)
+                    self.assertEqual(properties.title, 'Compose Deployment Technology')
+                    self.assertEqual(properties.description, 'The properties for the Compose deployment technology will be defined once the deployment technology specifications are separated from the core specification.')
                 fixture = ROOT / "model/examples/profile/valid" / f"{root}-001.json"
                 key = self.view.induced_slot("key", annotations["margo_profile_characteristic"]).equals_string
                 self.assertEqual(key, KNOWN[root])

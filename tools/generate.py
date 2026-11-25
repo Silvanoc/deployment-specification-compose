@@ -167,7 +167,7 @@ def validate_profile_metadata(schema):
             raise ValueError(f"Invalid profile display metadata: {cls.name}")
         ranks.add(cls.rank)
         kinds.add(kind)
-        for field in ("margo_profile_characteristic", "margo_profile_example") + (("margo_profile_label", "margo_profile_note") if kind == "deployment" else ()):
+        for field in ("margo_profile_characteristic", "margo_profile_example"):
             if field not in annotations or not annotations[field].value:
                 raise ValueError(f"Missing {field} on {cls.name}")
         target = annotations["margo_profile_characteristic"].value
@@ -176,6 +176,17 @@ def validate_profile_metadata(schema):
         slots = {slot.name: slot for slot in view.class_induced_slots(target)}
         if "key" not in slots or not slots["key"].equals_string:
             raise ValueError(f"Missing characteristic key: {target}")
+        if kind == 'deployment':
+            slot = slots.get('properties')
+            if not slot or not isinstance(slot.range, str) or not slot.range.strip() or slot.multivalued:
+                raise ValueError(f"Missing or invalid deployment properties range: {target}")
+            properties_class = view.get_class(slot.range)
+            if not properties_class:
+                raise ValueError(f"Unknown deployment properties class: {slot.range}")
+            if not isinstance(properties_class.title, str) or not properties_class.title.strip():
+                raise ValueError(f"Missing deployment properties title: {slot.range}")
+            if not isinstance(properties_class.description, str) or not properties_class.description.strip():
+                raise ValueError(f"Missing deployment properties description: {slot.range}")
     if kinds != {"deployment", "characteristic"}:
         raise ValueError("Missing profile display groups")
 

@@ -66,8 +66,6 @@ classes:
       margo_profile_kind: deployment
       margo_profile_characteristic: ComposeDeploymentCharacteristic
       margo_profile_example: profile/ComposeDeploymentCharacteristic-001.json
-      margo_profile_label: Compose Deployment Technology
-      margo_profile_note: The properties for the Compose deployment technology will be defined once the deployment technology specifications are separated from the core specification.
     attributes:
       key:
         range: string
@@ -78,6 +76,7 @@ classes:
         inlined: true
         required: true
   ComposeDeploymentProperties:
-    description: Compose deployment properties will be defined in the deployment technology specifications.
+    title: Compose Deployment Technology
+    description: The properties for the Compose deployment technology will be defined once the deployment technology specifications are separated from the core specification.
     extra_slots:
       allowed: true

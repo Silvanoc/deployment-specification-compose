@@ -117,6 +117,42 @@ class GenerationLayoutTests(unittest.TestCase):
         page = (self.root / "build/site/specification" / generate.PAGES["profile"]).read_text()
         self.assertIn(fixture.read_text(), page)
 
+    def test_deployment_properties_range_drives_label_and_note(self):
+        model = self.root / 'model/compose-profile.linkml.yaml'
+        text = model.read_text().replace('range: ComposeDeploymentProperties', 'range: AlternateProperties', 1)
+        text += '''\n  AlternateProperties:
+    title: Alternate Label
+    description: Alternate note from the selected properties class.
+    extra_slots:
+      allowed: true
+'''
+        model.write_text(text)
+        generate.validate_profile_metadata(model)
+        page = generate.render_page('profile', self.root, model)
+        self.assertIn('### Alternate Label Properties Attributes', page)
+        self.assertIn('> **Note:** Alternate note from the selected properties class.', page)
+        self.assertIn('### Alternate Label Example', page)
+
+    def test_deployment_properties_metadata_fails_closed(self):
+        model = self.root / 'model/compose-profile.linkml.yaml'
+        original = model.read_text()
+        for before, after in (
+            ('      properties:\n        range: ComposeDeploymentProperties', '      otherProperties:\n        range: ComposeDeploymentProperties'),
+            ('range: ComposeDeploymentProperties', 'range: string'),
+            ('range: ComposeDeploymentProperties', 'range: MissingProperties'),
+            ('        range: ComposeDeploymentProperties\n', ''),
+            ('range: ComposeDeploymentProperties', 'range: ComposeDeploymentProperties\n        multivalued: true'),
+            ('title: Compose Deployment Technology\n', "title: '   '\n"),
+            ('    title: Compose Deployment Technology\n', ''),
+            ('description: The properties for the Compose deployment technology will be defined once the deployment technology specifications are separated from the core specification.', "description: ''"),
+            ('    description: The properties for the Compose deployment technology will be defined once the deployment technology specifications are separated from the core specification.\n', ''),
+        ):
+            with self.subTest(after=after):
+                self.assertIn(before, original)
+                model.write_text(original.replace(before, after, 1))
+                with self.assertRaisesRegex(ValueError, 'deployment properties'):
+                    generate.validate_profile_metadata(model)
+
     def test_standard_jinja_and_missing_context(self):
         profile = (self.root / "content/profile.md").read_text()
         registry = (self.root / "content/registry.md").read_text()
