@@ -85,5 +85,6 @@ oras push registry.example.com/org/myapp:1.0.0 \
 Reference the artifact in the ApplicationDescription:
 
 ```yaml
-{{ example('application/ComponentListFragment-001.yaml') }}
+components:
+  - {{ example('application/ComposeComponent-001.yaml') | indent(4) }}
 ```

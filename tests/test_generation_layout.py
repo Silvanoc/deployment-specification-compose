@@ -190,7 +190,10 @@ class GenerationLayoutTests(unittest.TestCase):
                 group, filename = ref.split("/")
                 fixture = (self.root / "model/examples" / group / "valid" / filename).read_text()
                 parse = json.loads if filename.endswith(".json") else yaml.safe_load
-                self.assertEqual(parse(block), parse(fixture))
+                expected = parse(fixture)
+                if name == "registry" and filename == "ComposeComponent-001.yaml":
+                    expected = {"components": [expected]}
+                self.assertEqual(parse(block), expected)
 
 
 if __name__ == "__main__":

@@ -17,14 +17,6 @@ imports:
 default_prefix: margo
 
 classes:
-  ComponentListFragment:
-    description: Partial component list for registry examples, not a deployment profile.
-    slots:
-      - components
-    slot_usage:
-      components:
-        range: ComposeComponent
-
   ComposeDeploymentProfile:
     is_a: DeploymentProfile
     extra_slots:

@@ -42,7 +42,10 @@ class ApplicationCompatibilityTests(unittest.TestCase):
         self.assertTrue(slots["key"].required)
         self.assertTrue(slots["id"].required)
         self.assertEqual(slots["components"].range, "ComposeComponent")
-        self.assertIn("components", {s.name for s in self.view.class_induced_slots("ComponentListFragment")})
+
+    def test_component_is_modelled_without_list_fragment(self):
+        self.assertIsNone(self.view.get_class("ComponentListFragment"))
+        self.assertIsNotNone(self.view.get_class("ComposeComponent"))
 
     def test_application_example_linkml_validator(self):
         result = subprocess.run(["linkml", "validate", "--schema", str(MODEL),
@@ -94,7 +97,7 @@ class ApplicationCompatibilityTests(unittest.TestCase):
         self.assertTrue(self.valid("ComposeComponentProperties", {**properties, "timeout": "5m0s"}))
         self.assertFalse(self.valid("ComposeComponentProperties", {**properties, "timeout": "five"}))
         component = {"name": "main", "properties": properties}
-        self.assertTrue(self.valid("ComponentListFragment", {"components": [component]}))
+        self.assertTrue(self.valid("ComposeComponent", component))
         self.assertFalse(self.valid("DeploymentProfile", {"components": [component]}))
 
     def test_typed_select_options_generated_schema(self):

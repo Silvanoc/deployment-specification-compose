@@ -11,7 +11,7 @@ from schema_validation import ValidationEngine
 GROUPS = ("application", "profile", "registry")
 DOCUMENTS = (
     ("applications/application-description.md", {"yaml", "yml"}, "application", ".yaml", "ApplicationDescription"),
-    ("applications/application-registry.md", {"yaml", "yml"}, "application", ".yaml", "ComponentListFragment"),
+    ("applications/application-registry.md", {"yaml", "yml"}, "application", ".yaml", "ComposeComponent"),
     ("margo-management-interface/compose-profile-characteristics.md", {"json"}, "profile", ".json", None),
     ("applications/application-registry.md", {"bash"}, "registry", "oras", "ComposeComponentAnnotations"),
 )
@@ -39,6 +39,12 @@ def profile_target(data, schema):
     return matches[0]
 
 
+def registry_component(fragment):
+    if not isinstance(fragment, dict) or set(fragment) != {"components"} or not isinstance(fragment["components"], list) or len(fragment["components"]) != 1:
+        raise ValueError("Registry fragment must provide exactly one component in a components list")
+    return fragment["components"][0]
+
+
 def registry_context(fence, document):
     tokens = shlex.split(re.sub(r"\\\r?\n", " ", fence), comments=True)
     reference = tokens[2] if len(tokens) > 2 and tokens[:2] == ["oras", "push"] else ""
@@ -50,9 +56,7 @@ def registry_context(fence, document):
     components = []
     for text in markdown_fences(document, {"yaml", "yml"}):
         fragment = parse_data(text, ".yaml")
-        if not isinstance(fragment, dict) or not isinstance(fragment.get("components"), list):
-            raise ValueError("Registry fragment must provide one component repository/revision")
-        components.extend(fragment["components"])
+        components.append(registry_component(fragment))
     if len(components) != 1 or not isinstance(components[0], dict) or not isinstance(components[0].get("properties"), dict):
         raise ValueError("Registry fragment must provide exactly one component repository/revision")
     props = components[0]["properties"]
@@ -120,6 +124,8 @@ def _check(root, engine):
             raise ValueError(f"No {languages} examples in {document}")
         for fence in fences:
             data = parse_oras_annotations(fence) if kind == "oras" else parse_data(fence, kind)
+            if target == "ComposeComponent":
+                data = registry_component(data)
             intended = target or profile_target(data, root / "model/compose-profile.linkml.yaml")
             if not any(semantic_equal(data, fixture) for fixture in valid_data[group].get(intended, [])):
                 raise ValueError(f"Example drift in {document} ({group}/{intended})")

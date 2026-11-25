@@ -26,20 +26,13 @@ class WorkflowTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         for directory in ("model", "specification"):
             shutil.copytree(common.ROOT / directory, self.root / directory)
-        # Until the application schema lane lands its fixture renames, adapt
-        # only this isolated test project to the intended fragment class.
-        for kind in ("valid", "invalid"):
-            folder = self.root / "model/examples/application" / kind
-            if not any(folder.glob("ComponentListFragment-*")):
-                for old in folder.glob("DeploymentProfile-*"):
-                    old.rename(old.with_name(old.name.replace("DeploymentProfile-", "ComponentListFragment-", 1)))
 
     def test_fixture_discovery(self):
         with patch.object(check_examples, "validate") as validator:
             check_examples.check(self.root)
         calls = validator.call_args_list
         self.assertTrue(any(c.args[1] == "ApplicationDescription" and not c.kwargs["negative"] for c in calls))
-        self.assertTrue(any(c.args[1] == "ComponentListFragment" and c.kwargs["negative"] for c in calls))
+        self.assertTrue(any(c.args[1] == "ComposeComponent" and c.kwargs["negative"] for c in calls))
         self.assertTrue(any(c.args[1] == "ComposeProfile" and not c.kwargs["negative"] for c in calls))
         self.assertTrue(any(c.args[1] == "ComposeComponentAnnotations" and c.kwargs["negative"] for c in calls))
 
@@ -138,6 +131,25 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(check_examples.registry_context(fence.replace(reference, hostport), document.replace("oci://" + reference, "oci://" + hostport)), ("1.0.0", "1.0.0"))
         with self.assertRaisesRegex(ValueError, "repository and tag"):
             check_examples.registry_context(fence.replace(reference + ":1.0.0", hostport), document.replace("oci://" + reference, "oci://" + hostport))
+
+    def test_registry_wrapper_shape_and_drift(self):
+        doc = self.root / "specification/applications/application-registry.md"
+        original = doc.read_text()
+        yaml_fence = common.markdown_fences(original, {"yaml", "yml"})[0]
+        component = {"name": "myapp", "properties": {}}
+        for value in (None, [], {}, {"components": "bad"}, {"components": []},
+                      {"components": [component, component]}, {"components": [component], "other": 1}):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "Registry fragment"):
+                check_examples.registry_component(value)
+        for replacement in ("components: [", "components: not-a-list", "other: value\n" + yaml_fence,
+                            "other: value", "components: []", "components:\n  - {}\n  - {}"):
+            with self.subTest(replacement=replacement):
+                doc.write_text(original.replace(yaml_fence, replacement))
+                with patch.object(check_examples, "validate"), self.assertRaises((ValueError, yaml.YAMLError)):
+                    check_examples.check(self.root)
+        doc.write_text(original.replace("name: myapp", "name: changed"))
+        with patch.object(check_examples, "validate"), self.assertRaisesRegex(ValueError, "drift.*ComposeComponent"):
+            check_examples.check(self.root)
 
 
 class GenerationTests(unittest.TestCase):

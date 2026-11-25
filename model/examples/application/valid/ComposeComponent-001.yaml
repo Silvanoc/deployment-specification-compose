@@ -1,0 +1,4 @@
+name: myapp
+properties:
+  repository: oci://registry.example.com/org/myapp
+  revision: "1.0.0"

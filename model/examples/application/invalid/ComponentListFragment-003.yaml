@@ -1,5 +1,0 @@
-components:
-  - name: myapp
-    properties:
-      repository: oci://registry.example.com/org/myapp
-      revision: "not-a-version"
