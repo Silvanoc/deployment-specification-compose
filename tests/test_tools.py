@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +16,7 @@ import common
 import generate
 import jsonschema
 from jinja2 import Environment, nodes
+from linkml_runtime.dumpers import yaml_dumper
 import yaml
 from schema_validation import precise_validator
 
@@ -34,7 +36,153 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(any(c.args[1] == "ApplicationDescription" and not c.kwargs["negative"] for c in calls))
         self.assertTrue(any(c.args[1] == "ComposeComponent" and c.kwargs["negative"] for c in calls))
         self.assertTrue(any(c.args[1] == "ComposeProfile" and not c.kwargs["negative"] for c in calls))
-        self.assertTrue(any(c.args[1] == "ComposeComponentAnnotations" and c.kwargs["negative"] for c in calls))
+        registry_calls = [c for c in calls if c.args[1] == "ComposeComponentAnnotations"]
+        self.assertEqual(len(registry_calls), 4)
+        self.assertEqual(sum(not c.kwargs['negative'] for c in registry_calls), 1)
+
+    def test_registry_driver_large_integer_and_parse_failures(self):
+        fixture = self.root / 'model/examples/registry/invalid/ComposeComponentAnnotations-999.json'
+        valid = (self.root / 'model/examples/registry/valid/ComposeComponentAnnotations-001.json').read_text()
+        fixture.write_text(valid.rstrip()[:-1] + ', "vendor.extra": ' + '9' * 4301 + '}')
+        native = check_examples.make_registry_validator(self.root / 'model/compose-registry.linkml.yaml')
+        with patch.object(check_examples, 'make_registry_validator', return_value=native), patch.object(
+                native, 'validate', wraps=native.validate) as calls:
+            check_examples.check(self.root)
+        self.assertEqual(calls.call_count, 5)
+        fixture.write_text('{"a": 1, "a": 2}')
+        with self.assertRaises(ValueError):
+            check_examples.check(self.root)
+        fixture.unlink()
+        (fixture.parent / 'badname.json').write_text('{}')
+        with self.assertRaisesRegex(ValueError, 'Invalid fixture path'):
+            check_examples.check(self.root)
+
+    def test_registry_driver_target_order(self):
+        schema = self.root / 'model/order-registry.yaml'
+        schema.write_text('''id: https://example.org/order-registry
+name: order_registry
+prefixes:
+  linkml: https://w3id.org/linkml/
+  ex: https://example.org/
+imports:
+  - linkml:types
+default_prefix: ex
+classes:
+  Open:
+    extra_slots:
+      allowed: true
+    attributes:
+      name:
+        range: string
+  Closed:
+    extra_slots:
+      allowed: false
+    attributes:
+      name:
+        range: string
+''')
+        positive_open = self.root / 'Open-positive.json'
+        positive_closed = self.root / 'Closed-positive.json'
+        negative_open = self.root / 'Open-negative.json'
+        negative_closed = self.root / 'Closed-negative.json'
+        positive_open.write_text('{"name":"n","extra":"value"}')
+        positive_closed.write_text('{"name":"n"}')
+        negative_open.write_text('{"name":3}')
+        negative_closed.write_text('{"name":"n","extra":"value"}')
+        factory = check_examples.make_registry_validator
+        for order in (('Open', 'Closed'), ('Closed', 'Open')):
+            validators = []
+            def make(path):
+                validator = factory(path)
+                validator.validate = unittest.mock.Mock(wraps=validator.validate)
+                validators.append(validator)
+                return validator
+            adapter = check_examples._RegistryFixtureValidator(schema, check_examples.SchemaView(str(schema)))
+            with patch.object(check_examples, 'make_registry_validator', side_effect=make):
+                for target in order:
+                    positive = positive_open if target == 'Open' else positive_closed
+                    negative = negative_open if target == 'Open' else negative_closed
+                    check_examples.validate(schema, target, positive, engine=adapter)
+                    check_examples.validate(schema, target, negative, negative=True, engine=adapter)
+            self.assertEqual(len(validators), 2)
+            self.assertEqual([v.validate.call_count for v in validators], [2, 2])
+
+    def test_registry_fixture_context_note(self):
+        schema = self.root / 'model/compose-registry.linkml.yaml'
+        adapter = check_examples._RegistryFixtureValidator(schema, check_examples.SchemaView(str(schema)))
+        data = common.parse_data((self.root / 'model/examples/registry/valid/ComposeComponentAnnotations-001.json').read_text(), '.json')
+        errors, notes = adapter.validate(schema, 'ComposeComponentAnnotations', data)
+        self.assertFalse(errors)
+        self.assertEqual(notes, ['External OCI comparison not performed for: tag, revision'])
+        del data['org.margo.component.version']
+        _, notes = adapter.validate(schema, 'ComposeComponentAnnotations', data)
+        self.assertEqual(notes, [])
+
+    def test_registry_negative_plugin_exception_propagates(self):
+        schema = self.root / 'model/compose-registry.linkml.yaml'
+        fixture = self.root / 'model/examples/registry/invalid/ComposeComponentAnnotations-001.json'
+        native = check_examples.make_registry_validator(schema)
+        adapter = check_examples._RegistryFixtureValidator(schema, check_examples.SchemaView(str(schema)))
+        with patch.object(check_examples, 'make_registry_validator', return_value=native), patch.object(
+                native, 'validate', side_effect=RuntimeError('registry plugin failed')):
+            with self.assertRaisesRegex(RuntimeError, 'registry plugin failed'):
+                check_examples.validate(schema, 'ComposeComponentAnnotations', fixture, negative=True, engine=adapter)
+
+    def test_profile_fixtures_validated_once(self):
+        native = check_examples.ProfileValidator(self.root / 'model/compose-profile.linkml.yaml')
+        fixtures = [p for kind in ('valid', 'invalid') for p in (self.root / 'model/examples/profile' / kind).iterdir()]
+        with patch.object(check_examples, 'ProfileValidator', return_value=native), patch.object(
+                native, 'validate', wraps=native.validate) as calls, patch.object(
+                check_examples, 'validate', wraps=check_examples.validate) as checked:
+            check_examples.check(self.root)
+        seen = [c.args[2] for c in checked.call_args_list if c.args[2].parent.parent.name == 'profile']
+        self.assertEqual(Counter(seen), Counter(fixtures))
+        self.assertEqual(calls.call_count, len(fixtures))
+
+    def test_profile_examples_do_not_require_example_annotations(self):
+        schema = self.root / 'model/compose-profile.linkml.yaml'
+        view = check_examples.SchemaView(str(schema))
+        view.all_classes()
+        shared = yaml.safe_load(yaml_dumper.dumps(view.schema_map['margo-common:workload-target-characteristics.linkml']))
+        local = yaml.safe_load(schema.read_text())
+        def strip(value):
+            if isinstance(value, dict):
+                for key in list(value):
+                    if key == 'margo_profile_example':
+                        value.pop(key)
+                    else:
+                        strip(value[key])
+            elif isinstance(value, list):
+                for child in value:
+                    strip(child)
+        self.assertIn('Cpu', shared['classes'])
+        self.assertIn('MemoryProperties', shared['classes'])
+        self.assertIn('ComposeDeploymentCharacteristic', local['classes'])
+        strip(shared)
+        strip(local)
+        shared_path = self.root / 'model/workload-target-characteristics.linkml.yaml'
+        shared_path.write_text(yaml.safe_dump(shared, sort_keys=False))
+        local['imports'] = ['linkml:types', str(shared_path.with_suffix(''))]
+        schema.write_text(yaml.safe_dump(local, sort_keys=False))
+        fixtures = [p for kind in ('valid', 'invalid') for p in (self.root / 'model/examples/profile' / kind).iterdir()]
+        for source_already_absent in (False, True):
+            with self.subTest(source_already_absent=source_already_absent):
+                if source_already_absent:
+                    # Repeat the removal on already annotation-free sources.
+                    for path in (schema, shared_path):
+                        source = yaml.safe_load(path.read_text())
+                        strip(source)
+                        path.write_text(yaml.safe_dump(source, sort_keys=False))
+                isolated = check_examples.SchemaView(str(schema))
+                self.assertFalse(any('margo_profile_example' in c.annotations for c in isolated.all_classes().values()))
+                native = check_examples.ProfileValidator(schema)
+                with patch.object(check_examples, 'ProfileValidator', return_value=native), patch.object(
+                        native, 'validate', wraps=native.validate) as calls, patch.object(
+                        check_examples, 'validate', wraps=check_examples.validate) as checked:
+                    check_examples.check(self.root)
+                seen = [c.args[2] for c in checked.call_args_list if c.args[2].parent.parent.name == 'profile']
+                self.assertEqual(Counter(seen), Counter(fixtures))
+                self.assertEqual(calls.call_count, len(fixtures))
 
     def test_drift_and_missing_negative(self):
         doc = self.root / "specification/margo-management-interface/compose-profile-characteristics.md"

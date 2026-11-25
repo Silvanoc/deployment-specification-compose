@@ -4,9 +4,12 @@ import shlex
 import sys
 
 from linkml_runtime.utils.schemaview import SchemaView
+from linkml.validator.report import Severity
 
 from common import ROOT, markdown_fences, parse_data, parse_oras_annotations, semantic_equal
 from schema_validation import ValidationEngine
+from registry_examples import make_registry_validator, check_registry_context
+from profile_examples import ProfileValidator
 
 GROUPS = ("application", "profile", "registry")
 DOCUMENTS = (
@@ -16,6 +19,29 @@ DOCUMENTS = (
     ("applications/application-registry.md", {"bash"}, "registry", "oras", "ComposeComponentAnnotations"),
 )
 PROFILE_CLASSES = ("ComposeDeploymentCharacteristic", "CpuCharacteristic", "MemoryCharacteristic", "StorageCharacteristic", "PeripheralsCharacteristic", "InterfacesCharacteristic")
+_UNPARSED = object()
+
+
+class _RegistryFixtureValidator:
+    def __init__(self, schema, view):
+        self.schema = schema
+        self.view = view
+        self.validators = {}
+
+    def validate(self, schema, target, data):
+        if target not in self.validators:
+            self.validators[target] = make_registry_validator(self.schema)
+        report = self.validators[target].validate(data, target)
+        notes = []
+        if isinstance(data, dict):
+            for slot in self.view.class_induced_slots(target):
+                if slot.name not in data or not slot.annotations or 'margo_oci_tag_encoding' not in slot.annotations:
+                    continue
+                if slot.annotations['margo_oci_tag_encoding'].value != 'semver_plus_as_underscore':
+                    raise ValueError(f'Unsupported OCI tag encoding on {slot.name}')
+                notes.append('External OCI comparison not performed for: tag, revision')
+                break
+        return [r.message for r in report.results if r.severity in (Severity.ERROR, Severity.FATAL)], notes
 
 
 def profile_target(data, schema):
@@ -69,8 +95,9 @@ def registry_context(fence, document):
     return tag, revision
 
 
-def validate(schema, target, fixture, negative=False, engine=None):
-    data = parse_data(fixture.read_text(encoding="utf-8"), fixture.suffix)
+def validate(schema, target, fixture, negative=False, engine=None, data=_UNPARSED):
+    if data is _UNPARSED:
+        data = parse_data(fixture.read_text(encoding="utf-8"), fixture.suffix)
     errors, notes = engine.validate(schema, target, data)
     if negative:
         if not errors:
@@ -96,6 +123,9 @@ def _check(root, engine):
         if schema.is_symlink() or not schema.is_file():
             raise ValueError(f"Missing or unsafe schema: {schema}")
         targets = {}
+        registry_view = SchemaView(str(schema)) if group == 'registry' else None
+        registry_validator = _RegistryFixtureValidator(schema, registry_view) if registry_view else None
+        profile_validator = ProfileValidator(schema) if group == 'profile' else None
         valid_data[group] = {}
         for kind in ("valid", "invalid"):
             directory = root / "model/examples" / group / kind
@@ -110,7 +140,11 @@ def _check(root, engine):
                     raise ValueError(f"Invalid fixture path: {fixture}")
                 target = match.group(1)
                 data = parse_data(fixture.read_text(encoding="utf-8"), fixture.suffix)
-                validate(schema, target, fixture, negative=kind == "invalid", engine=engine)
+                if registry_view:
+                    if registry_view.get_class(target) is None:
+                        raise ValueError(f"Unknown registry target class: {target}")
+                validate(schema, target, fixture, negative=kind == "invalid",
+                         engine=registry_validator or profile_validator or engine, data=data)
                 targets.setdefault(target, set()).add(kind)
                 if kind == "valid":
                     valid_data[group].setdefault(target, []).append(data)
@@ -132,11 +166,7 @@ def _check(root, engine):
                 raise ValueError(f"Example drift in {document} ({group}/{intended})")
             if kind == "oras":
                 tag, revision = registry_context(fence, document.read_text(encoding="utf-8"))
-                errors, notes = engine.validate(root / "model/compose-registry.linkml.yaml", intended, data, tag=tag, revision=revision)
-                if errors:
-                    raise ValueError(f"Registry example context invalid: {'; '.join(errors)}")
-                for note in notes:
-                    print(f"{document}: {note}")
+                check_registry_context(root / "model/compose-registry.linkml.yaml", intended, data, tag, revision)
 
 
 if __name__ == "__main__":

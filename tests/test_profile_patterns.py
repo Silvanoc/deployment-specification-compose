@@ -14,6 +14,7 @@ from linkml_runtime.utils.schemaview import SchemaView
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import check_examples
+from common import parse_data
 SCHEMA = ROOT / "model/compose-profile.linkml.yaml"
 KNOWN = {
     "ComposeDeploymentCharacteristic": "margo.org/deployment/compose",
@@ -107,6 +108,9 @@ class ProfilePatternsTest(unittest.TestCase):
                 self.assertEqual(slot.range, range_)
 
     def test_profile_presentation_metadata(self):
+        self.assert_profile_presentation_metadata(self.view)
+
+    def assert_profile_presentation_metadata(self, view):
         expected = [
             ("ComposeDeploymentCharacteristic", "Compose Deployment Technology Support", 10, "deployment", "ComposeDeploymentCharacteristic", "The following required characteristics indicate a workload target is capable of deploying Compose workloads."),
             ("Cpu", "CPUs", 20, "characteristic", "CpuCharacteristic", None),
@@ -115,27 +119,36 @@ class ProfilePatternsTest(unittest.TestCase):
             ("Peripheral", "Peripherals", 50, "characteristic", "PeripheralsCharacteristic", "Indicates the peripherals available on the workload target."),
             ("Interface", "Interfaces", 60, "characteristic", "InterfacesCharacteristic", "Indicates the interfaces available on the workload target."),
         ]
-        classes = [c for c in self.view.all_classes().values() if "margo_profile_kind" in c.annotations]
+        classes = [c for c in view.all_classes().values() if "margo_profile_kind" in c.annotations]
         classes.sort(key=lambda c: c.rank)
         self.assertEqual([c.name for c in classes], [entry[0] for entry in expected])
         for cls, (name, title, rank, kind, root, description) in zip(classes, expected):
             with self.subTest(name=name):
                 self.assertEqual((cls.title, cls.rank, cls.description), (title, rank, description))
-                annotations = {key: value.value for key, value in cls.annotations.items()}
+                annotations = {key: value.value for key, value in cls.annotations.items()
+                               if key != "margo_profile_example"}
                 expected_annotations = {
                     "margo_profile_kind": kind,
                     "margo_profile_characteristic": root,
-                    "margo_profile_example": f"profile/{root}-001.json",
                 }
                 self.assertEqual(annotations, expected_annotations)
                 if kind == "deployment":
-                    properties = self.view.get_class(self.view.induced_slot('properties', root).range)
+                    properties = view.get_class(view.induced_slot('properties', root).range)
                     self.assertEqual(properties.title, 'Compose Deployment Technology')
                     self.assertEqual(properties.description, 'The properties for the Compose deployment technology will be defined once the deployment technology specifications are separated from the core specification.')
-                fixture = ROOT / "model/examples/profile/valid" / f"{root}-001.json"
-                key = self.view.induced_slot("key", annotations["margo_profile_characteristic"]).equals_string
+                key = view.induced_slot("key", annotations["margo_profile_characteristic"]).equals_string
                 self.assertEqual(key, KNOWN[root])
-                self.assertEqual(json.loads(fixture.read_text())["key"], key)
+                fixtures = [p for p in (ROOT / "model/examples/profile/valid").iterdir()
+                            if re.fullmatch(re.escape(root) + r"-[A-Za-z0-9][A-Za-z0-9_-]*\.(?:json|yaml|yml)", p.name)]
+                self.assertTrue(fixtures, f"Missing valid fixtures for {root}")
+                for fixture in fixtures:
+                    self.assertEqual(parse_data(fixture.read_text(), fixture.suffix)["key"], key)
+
+    def test_profile_examples_do_not_require_example_annotation(self):
+        view = SchemaView(str(SCHEMA))
+        for cls in view.all_classes().values():
+            cls.annotations.pop("margo_profile_example", None)
+        self.assert_profile_presentation_metadata(view)
 
     def test_required_characteristics_match_presentation(self):
         expressions = self.view.get_class('ComposeProfile').all_of
