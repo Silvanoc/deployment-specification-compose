@@ -90,9 +90,10 @@ extensions, registry annotation types, null restrictions and version equality.
 The existing fixture driver retains strict parsing, including exact numeric
 values, which LinkML's example runner cannot currently preserve. Documentation
 drift and OCI tag/revision consistency are checked separately. Application
-fixture validation still uses the existing validation engine. The
-`margo_profile_example` annotation is not used to validate fixtures; it is
-currently used to select examples for generated profile documentation.
+fixture validation still uses the existing validation engine. Profile documentation
+selects the lexicographically first JSON fixture in `valid/` matching each
+characteristic class using LinkML's example discovery convention; it ignores
+`invalid/` and does not validate fixture contents during selection.
 
 Fixtures are discovered under `model/examples/<model>/valid/` and
 `model/examples/<model>/invalid/`. Name each file `<ClassName>-<name>.yaml`

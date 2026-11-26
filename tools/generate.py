@@ -1,5 +1,6 @@
 """Render the supplemental specification from LinkML and fixed templates."""
 import argparse
+import glob
 import re
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ from schema_validation import generated_schema
 import simplejson
 from linkml_runtime.utils.schemaview import SchemaView
 from linkml.generators.docgen import DocGenerator
+from linkml.workspaces.example_runner import ExampleRunner
 from jinja2 import Environment, FileSystemLoader, PrefixLoader, StrictUndefined, TemplateError, TemplateNotFound
 
 PAGES = {
@@ -103,6 +105,19 @@ def index_template(name, root, view, generator):
         seen_examples.add(ref)
         return block[:-1]
 
+    def profile_example(cls):
+        if not isinstance(cls, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", cls) or not view.get_class(cls):
+            raise ValueError(f"Invalid or unknown profile characteristic: {cls}")
+        directory = root / "model/examples/profile/valid"
+        for component in (root, root / "model", root / "model/examples", directory.parent, directory):
+            if component.is_symlink() or not component.is_dir():
+                raise ValueError(f"Missing or unsafe profile example directory: {component}")
+        runner = ExampleRunner(input_directory=Path(glob.escape(str(directory))), input_formats=["json"])
+        matches = sorted(runner.example_source_inputs(cls))
+        if not matches:
+            raise ValueError(f"No valid profile JSON example for {cls} in {directory}; add {cls}-<name>.json")
+        return example(f"profile/{Path(matches[0]).name}")
+
     def require_group(group):
         if name != "profile" or group not in ("deployment", "characteristic") or group in groups:
             raise ValueError(f"Invalid or duplicate profile group: {group}")
@@ -113,7 +128,7 @@ def index_template(name, root, view, generator):
                            "model": SafeLoader(str(root / "tools/templates"))})
     env = Environment(loader=loader, undefined=StrictUndefined, autoescape=False, keep_trailing_newline=True)
     generator.customize_environment(env)
-    env.globals.update(example=example, require_group=require_group)
+    env.globals.update(example=example, profile_example=profile_example, require_group=require_group)
     template = env.get_template(f"content/{name}.md")
 
     class CheckedIndex:
@@ -167,11 +182,11 @@ def validate_profile_metadata(schema):
             raise ValueError(f"Invalid profile display metadata: {cls.name}")
         ranks.add(cls.rank)
         kinds.add(kind)
-        for field in ("margo_profile_characteristic", "margo_profile_example"):
+        for field in ("margo_profile_characteristic",):
             if field not in annotations or not annotations[field].value:
                 raise ValueError(f"Missing {field} on {cls.name}")
         target = annotations["margo_profile_characteristic"].value
-        if not view.get_class(target):
+        if not isinstance(target, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", target) or not view.get_class(target):
             raise ValueError(f"Unknown profile characteristic: {target}")
         slots = {slot.name: slot for slot in view.class_induced_slots(target)}
         if "key" not in slots or not slots["key"].equals_string:

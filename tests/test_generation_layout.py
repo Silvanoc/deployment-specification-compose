@@ -28,6 +28,19 @@ class GenerationLayoutTests(unittest.TestCase):
             shutil.copytree(ROOT / directory, self.root / directory)
         for name in ("README.md", "COMPATIBILITY-ISSUES.md"):
             shutil.copy2(ROOT / name, self.root / name)
+        model = self.root / "model/compose-profile.linkml.yaml"
+        view = SchemaView(str(model))
+        source_id = next(i for i in view.imports_closure() if i.endswith('workload-target-characteristics.linkml'))
+        source = view.schema_map[source_id].source_file
+        if urlsplit(source).scheme in ('http', 'https'):
+            with urlopen(source, timeout=30) as response:
+                text = response.read().decode('utf-8')
+        else:
+            text = Path(source).read_text()
+        text = re.sub(r'^\s*margo_profile_example:.*\n', '', text, flags=re.MULTILINE)
+        shared = self.root / 'model/shared-characteristics.yaml'
+        shared.write_text(text)
+        model.write_text(model.read_text().replace(source_id, str(shared.with_suffix(''))))
 
     def test_exact_parity_and_no_examples_catalog(self):
         self.assertFalse(list(self.root.rglob("*-examples.json")))
@@ -72,8 +85,8 @@ class GenerationLayoutTests(unittest.TestCase):
 
     def test_new_class_and_example_need_no_code_change(self):
         model = self.root / "model/compose-profile.linkml.yaml"
-        model.write_text(model.read_text().replace("classes:\n", "classes:\n  Novel:\n    title: Novel Display\n    rank: 25\n    annotations:\n      margo_profile_kind: characteristic\n      margo_profile_characteristic: Novel\n      margo_profile_example: profile/Novel-001.json\n    attributes:\n      key:\n        range: string\n        equals_string: example/novel\n      value:\n        range: string\n        description: A novel value.\n", 1))
-        fixture = self.root / "model/examples/profile/valid/Novel-001.json"
+        model.write_text(model.read_text().replace("classes:\n", "classes:\n  Novel:\n    title: Novel Display\n    rank: 25\n    annotations:\n      margo_profile_kind: characteristic\n      margo_profile_characteristic: Novel\n    attributes:\n      key:\n        range: string\n        equals_string: example/novel\n      value:\n        range: string\n        description: A novel value.\n", 1))
+        fixture = self.root / "model/examples/profile/valid/Novel-other.json"
         fixture.write_text('{"value": "new"}\n')
         generate.generate(self.root)
         page = (self.root / "build/site/specification" / generate.PAGES["profile"]).read_text()
@@ -86,7 +99,7 @@ class GenerationLayoutTests(unittest.TestCase):
     def test_model_and_source_changes_appear(self):
         model = self.root / "model/compose-profile.linkml.yaml"
         view = SchemaView(str(model))
-        source_id = next(i for i in view.imports_closure() if i.endswith('workload-target-characteristics.linkml'))
+        source_id = next(i for i in view.imports_closure() if i.endswith('shared-characteristics'))
         source = view.schema_map[source_id].source_file
         if urlsplit(source).scheme in ('http', 'https'):
             with urlopen(source, timeout=30) as response:
@@ -241,7 +254,8 @@ class GenerationLayoutTests(unittest.TestCase):
             if name == "profile":
                 view = SchemaView(str(self.root / "model/compose-profile.linkml.yaml"))
                 classes = [cls for cls in view.all_classes().values() if "margo_profile_kind" in cls.annotations]
-                refs = [cls.annotations["margo_profile_example"].value for cls in sorted(classes, key=lambda cls: cls.rank)] + refs
+                runner = generate.ExampleRunner(input_directory=self.root / "model/examples/profile/valid", input_formats=["json"])
+                refs = ["profile/" + Path(sorted(runner.example_source_inputs(cls.annotations["margo_profile_characteristic"].value))[0]).name for cls in sorted(classes, key=lambda cls: cls.rank)] + refs
             self.assertEqual(len(blocks), len(refs))
             for block, ref in zip(blocks, refs):
                 group, filename = ref.split("/")
@@ -251,6 +265,66 @@ class GenerationLayoutTests(unittest.TestCase):
                 if name == "registry" and filename == "ComposeComponent-001.yaml":
                     expected = {"components": [expected]}
                 self.assertEqual(parse(block), expected)
+
+    def test_profile_discovery_is_annotation_free_and_deterministic(self):
+        model = self.root / 'model/compose-profile.linkml.yaml'
+        view = SchemaView(str(model))
+        self.assertFalse(any('margo_profile_example' in cls.annotations for cls in view.all_classes().values()))
+        directory = self.root / 'model/examples/profile/valid'
+        original = directory / 'CpuCharacteristic-001.json'
+        original.rename(directory / 'CpuCharacteristic-z.json')
+        first = directory / 'CpuCharacteristic-a.json'
+        other = (directory / 'CpuCharacteristic-z.json').read_text()
+        first.write_text(other.replace('"key":', '"key" :', 1))
+        actual = generate.ExampleRunner.example_source_inputs
+        calls = []
+        def spy(runner, class_name=None):
+            calls.append((runner.input_directory, runner.input_formats, class_name))
+            return actual(runner, class_name)
+        with patch.object(generate.ExampleRunner, 'example_source_inputs', spy):
+            page = generate.render_page('profile', self.root, model)
+        self.assertIn(first.read_text(), page)
+        self.assertNotIn(other, page)
+        self.assertIn((directory, ['json'], 'CpuCharacteristic'), calls)
+
+    def test_profile_discovery_with_glob_metacharacters_in_root(self):
+        root = self.root / 'repo[1]'
+        for directory in ('model', 'content', 'tools/templates'):
+            shutil.copytree(self.root / directory, root / directory)
+        model = root / 'model/compose-profile.linkml.yaml'
+        model.write_text(model.read_text().replace(str(self.root / 'model/shared-characteristics'), 'shared-characteristics'))
+        page = generate.render_page('profile', root, model)
+        fixture = root / 'model/examples/profile/valid/CpuCharacteristic-001.json'
+        self.assertIn(fixture.read_text(), page)
+
+    def test_profile_missing_invalid_only_and_symlink_fail(self):
+        model = self.root / 'model/compose-profile.linkml.yaml'
+        directory = self.root / 'model/examples/profile/valid'
+        fixture = directory / 'CpuCharacteristic-001.json'
+        fixture.unlink()
+        invalid = self.root / 'model/examples/profile/invalid/CpuCharacteristic-only.json'
+        invalid.write_text('{}\n')
+        with self.assertRaisesRegex(ValueError, 'No valid profile JSON example for CpuCharacteristic'):
+            generate.render_page('profile', self.root, model)
+        fixture.symlink_to(self.root / 'README.md')
+        with self.assertRaisesRegex(ValueError, 'unsafe example'):
+            generate.render_page('profile', self.root, model)
+
+    def test_profile_discovery_rejects_unsafe_directory_before_glob(self):
+        model = self.root / 'model/compose-profile.linkml.yaml'
+        directory = self.root / 'model/examples/profile/valid'
+        moved = directory.with_name('saved-valid')
+        directory.rename(moved)
+        for symlink in (False, True):
+            with self.subTest(symlink=symlink):
+                if symlink:
+                    directory.symlink_to(moved, target_is_directory=True)
+                with patch.object(generate.ExampleRunner, 'example_source_inputs') as discovery:
+                    with self.assertRaisesRegex(ValueError, 'unsafe profile example directory'):
+                        generate.render_page('profile', self.root, model)
+                    discovery.assert_not_called()
+                if symlink:
+                    directory.unlink()
 
 
 if __name__ == "__main__":
