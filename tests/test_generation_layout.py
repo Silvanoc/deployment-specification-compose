@@ -37,7 +37,7 @@ class GenerationLayoutTests(unittest.TestCase):
                 text = response.read().decode('utf-8')
         else:
             text = Path(source).read_text()
-        text = re.sub(r'^\s*margo_profile_example:.*\n', '', text, flags=re.MULTILINE)
+        text = re.sub(r'^ *margo_profile_(?:example|kind|characteristic):.*\n', '', text, flags=re.MULTILINE)
         shared = self.root / 'model/shared-characteristics.yaml'
         shared.write_text(text)
         model.write_text(model.read_text().replace(source_id, str(shared.with_suffix(''))))
@@ -85,9 +85,14 @@ class GenerationLayoutTests(unittest.TestCase):
 
     def test_new_class_and_example_need_no_code_change(self):
         model = self.root / "model/compose-profile.linkml.yaml"
-        model.write_text(model.read_text().replace("classes:\n", "classes:\n  Novel:\n    title: Novel Display\n    rank: 25\n    annotations:\n      margo_profile_kind: characteristic\n      margo_profile_characteristic: Novel\n    attributes:\n      key:\n        range: string\n        equals_string: example/novel\n      value:\n        range: string\n        description: A novel value.\n", 1))
+        model.write_text(model.read_text().replace("classes:\n", "classes:\n  Novel:\n    title: Novel Display\n    rank: 25\n    attributes:\n      key:\n        range: string\n        equals_string: example/novel\n      value:\n        range: string\n        description: A novel value.\n", 1))
+        data = yaml.safe_load(model.read_text())
+        profile = data['classes']['ComposeProfile']
+        profile['slot_usage']['characteristics']['any_of'].append({'range': 'Novel'})
+        profile['all_of'].append({'slot_conditions': {'characteristics': {'has_member': {'range': 'Novel'}}}})
+        model.write_text(yaml.safe_dump(data, sort_keys=False))
         fixture = self.root / "model/examples/profile/valid/Novel-other.json"
-        fixture.write_text('{"value": "new"}\n')
+        fixture.write_text('{"key": "example/novel", "value": "new"}\n')
         generate.generate(self.root)
         page = (self.root / "build/site/specification" / generate.PAGES["profile"]).read_text()
         self.assertIn("### Novel Display\n\nKey: `example/novel`", page)
@@ -95,6 +100,14 @@ class GenerationLayoutTests(unittest.TestCase):
         self.assertLess(page.index("### Novel Display"), page.index("### Memory"))
         self.assertIn("| value | string | N | A novel value. |", page)
         self.assertIn(fixture.read_text(), page)
+        view = SchemaView(str(model))
+        self.assertIn('Novel', [x.range for x in view.induced_slot('characteristics', 'ComposeProfile').any_of])
+        from profile_examples import ProfileValidator
+        validator = ProfileValidator(model)
+        full = json.loads((self.root / 'model/examples/profile/valid/ComposeProfile-001.json').read_text())
+        self.assertTrue(validator.validate(model, 'ComposeProfile', full)[0])
+        full['characteristics'].append(json.loads(fixture.read_text()))
+        self.assertFalse(validator.validate(model, 'ComposeProfile', full)[0])
 
     def test_model_and_source_changes_appear(self):
         model = self.root / "model/compose-profile.linkml.yaml"
@@ -154,6 +167,7 @@ class GenerationLayoutTests(unittest.TestCase):
             ('range: ComposeDeploymentProperties', 'range: string'),
             ('range: ComposeDeploymentProperties', 'range: MissingProperties'),
             ('        range: ComposeDeploymentProperties\n', ''),
+            ('        range: ComposeDeploymentProperties\n', '        any_of:\n          - range: ComposeDeploymentProperties\n'),
             ('range: ComposeDeploymentProperties', 'range: ComposeDeploymentProperties\n        multivalued: true'),
             ('title: Compose Deployment Technology\n', "title: '   '\n"),
             ('    title: Compose Deployment Technology\n', ''),
@@ -253,9 +267,9 @@ class GenerationLayoutTests(unittest.TestCase):
             refs = re.findall(r"example\('([^']+)'\)", (self.root / "content" / f"{name}.md").read_text())
             if name == "profile":
                 view = SchemaView(str(self.root / "model/compose-profile.linkml.yaml"))
-                classes = [cls for cls in view.all_classes().values() if "margo_profile_kind" in cls.annotations]
+                sections = generate.profile_sections(view)
                 runner = generate.ExampleRunner(input_directory=self.root / "model/examples/profile/valid", input_formats=["json"])
-                refs = ["profile/" + Path(sorted(runner.example_source_inputs(cls.annotations["margo_profile_characteristic"].value))[0]).name for cls in sorted(classes, key=lambda cls: cls.rank)] + refs
+                refs = ["profile/" + Path(sorted(runner.example_source_inputs(section.target))[0]).name for section in sections] + refs
             self.assertEqual(len(blocks), len(refs))
             for block, ref in zip(blocks, refs):
                 group, filename = ref.split("/")
@@ -269,7 +283,8 @@ class GenerationLayoutTests(unittest.TestCase):
     def test_profile_discovery_is_annotation_free_and_deterministic(self):
         model = self.root / 'model/compose-profile.linkml.yaml'
         view = SchemaView(str(model))
-        self.assertFalse(any('margo_profile_example' in cls.annotations for cls in view.all_classes().values()))
+        self.assertFalse(any(key in cls.annotations for cls in view.all_classes().values()
+                             for key in ('margo_profile_example', 'margo_profile_kind', 'margo_profile_characteristic')))
         directory = self.root / 'model/examples/profile/valid'
         original = directory / 'CpuCharacteristic-001.json'
         original.rename(directory / 'CpuCharacteristic-z.json')
@@ -296,6 +311,41 @@ class GenerationLayoutTests(unittest.TestCase):
         page = generate.render_page('profile', root, model)
         fixture = root / 'model/examples/profile/valid/CpuCharacteristic-001.json'
         self.assertIn(fixture.read_text(), page)
+
+    def test_optional_and_subclass_fixtures_do_not_change_docs(self):
+        import check_examples
+        model = self.root / 'model/compose-profile.linkml.yaml'
+        data = yaml.safe_load(model.read_text())
+        data['classes']['DerivedCpu'] = {'is_a': 'CpuCharacteristic'}
+        data['classes']['OptionalCharacteristic'] = {'title': 'Optional', 'rank': 25, 'attributes': {
+            'key': {'range': 'string', 'required': True, 'equals_string': 'vendor/optional'}}}
+        model.write_text(yaml.safe_dump(data, sort_keys=False))
+        valid = self.root / 'model/examples/profile/valid'
+        invalid = self.root / 'model/examples/profile/invalid'
+        (valid / 'DerivedCpu-test.json').write_text((valid / 'CpuCharacteristic-001.json').read_text())
+        (invalid / 'DerivedCpu-test.json').write_text('{}\n')
+        (valid / 'OptionalCharacteristic-test.json').write_text('{"key":"vendor/optional"}\n')
+        (invalid / 'OptionalCharacteristic-test.json').write_text('{}\n')
+        page = generate.render_page('profile', self.root, model)
+        self.assertEqual(page, (self.root / 'specification' / generate.PAGES['profile']).read_text())
+        self.assertEqual(check_examples.profile_target({'key': 'margo.org/resource/cpu'}, str(model)), 'CpuCharacteristic')
+        with self.assertRaisesRegex(ValueError, 'matches 0'):
+            check_examples.profile_target({'key': 'vendor/optional'}, str(model))
+        generate.validate_profile_metadata(str(model))
+        check_examples.check(self.root)
+
+    def test_required_pattern_is_rendered_accurately(self):
+        model = self.root / 'model/compose-profile.linkml.yaml'
+        data = yaml.safe_load(model.read_text())
+        data['classes']['PatternCharacteristic'] = {'title': 'Pattern', 'rank': 25, 'attributes': {
+            'key': {'range': 'string', 'required': True, 'pattern': 'vendor/pattern/.*'}}}
+        profile = data['classes']['ComposeProfile']
+        profile['slot_usage']['characteristics']['any_of'].append({'range': 'PatternCharacteristic'})
+        profile['all_of'].append({'slot_conditions': {'characteristics': {'has_member': {'range': 'PatternCharacteristic'}}}})
+        model.write_text(yaml.safe_dump(data, sort_keys=False))
+        (self.root / 'model/examples/profile/valid/PatternCharacteristic-example.json').write_text('{"key":"vendor/pattern/test"}\n')
+        page = generate.render_page('profile', self.root, model)
+        self.assertIn('### Pattern\n\nKey pattern: `vendor/pattern/.*`', page)
 
     def test_profile_missing_invalid_only_and_symlink_fail(self):
         model = self.root / 'model/compose-profile.linkml.yaml'

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from common import ROOT
 from schema_validation import generated_schema
+from profile_structure import profile_sections
 import simplejson
 from linkml_runtime.utils.schemaview import SchemaView
 from linkml.generators.docgen import DocGenerator
@@ -134,6 +135,8 @@ def index_template(name, root, view, generator):
     class CheckedIndex:
         def render(self, **context):
             context["schemaview"] = ModelView()
+            if name == "profile":
+                context["profile_sections"] = validate_profile_metadata(root / "model/compose-profile.linkml.yaml", view=view)
             result = template.render(**context)
             if not seen_examples or (name == "profile" and groups != {"deployment", "characteristic"}):
                 raise ValueError(f"Missing example references or profile groups in {name}")
@@ -168,30 +171,20 @@ def render_page(name, root, schema, directory=None):
     return index.read_bytes().decode("utf-8")
 
 
-def validate_profile_metadata(schema):
+def validate_profile_metadata(schema, view=None):
     """Reject incomplete display metadata before rendering the profile index."""
-    view = SchemaView(str(schema))
-    ranks = set()
-    kinds = set()
-    for cls in view.all_classes().values():
-        annotations = cls.annotations
-        if "margo_profile_kind" not in annotations:
-            continue
-        kind = annotations["margo_profile_kind"].value
-        if kind not in ("deployment", "characteristic") or not cls.title or cls.rank is None or cls.rank in ranks:
-            raise ValueError(f"Invalid profile display metadata: {cls.name}")
-        ranks.add(cls.rank)
-        kinds.add(kind)
-        for field in ("margo_profile_characteristic",):
-            if field not in annotations or not annotations[field].value:
-                raise ValueError(f"Missing {field} on {cls.name}")
-        target = annotations["margo_profile_characteristic"].value
+    schema = Path(schema)
+    view = view or SchemaView(str(schema))
+    sections = profile_sections(view)
+    kinds = {section.kind for section in sections}
+    for section in sections:
+        target = section.target
         if not isinstance(target, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", target) or not view.get_class(target):
             raise ValueError(f"Unknown profile characteristic: {target}")
         slots = {slot.name: slot for slot in view.class_induced_slots(target)}
-        if "key" not in slots or not slots["key"].equals_string:
+        if "key" not in slots or not (slots["key"].equals_string or slots["key"].pattern):
             raise ValueError(f"Missing characteristic key: {target}")
-        if kind == 'deployment':
+        if section.kind == 'deployment':
             slot = slots.get('properties')
             if not slot or not isinstance(slot.range, str) or not slot.range.strip() or slot.multivalued:
                 raise ValueError(f"Missing or invalid deployment properties range: {target}")
@@ -204,6 +197,7 @@ def validate_profile_metadata(schema):
                 raise ValueError(f"Missing deployment properties description: {slot.range}")
     if kinds != {"deployment", "characteristic"}:
         raise ValueError("Missing profile display groups")
+    return sections
 
 
 def generate(root=ROOT, check=False):

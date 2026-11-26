@@ -12,6 +12,10 @@ imports:
   - margo-common:workload-target-characteristics.linkml
 default_prefix: margo
 
+subsets:
+  DeploymentTechnologyCharacteristics:
+    description: Characteristics indicating support for a deployment technology.
+
 classes:
   ComposeProfile:
     description: Profile containing characteristics of a Compose workload target.
@@ -62,9 +66,7 @@ classes:
     title: Compose Deployment Technology Support
     description: The following required characteristics indicate a workload target is capable of deploying Compose workloads.
     rank: 10
-    annotations:
-      margo_profile_kind: deployment
-      margo_profile_characteristic: ComposeDeploymentCharacteristic
+    in_subset: [DeploymentTechnologyCharacteristics]
     attributes:
       key:
         range: string

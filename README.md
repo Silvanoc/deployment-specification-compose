@@ -73,9 +73,10 @@ examples and, where needed, LinkML model data and formatting templates in
 `tools/templates/`. Edit the models
 or Markdown sources when changing content, then review the generated pages
 against the checked-in pages. The remaining two pages contain prose and are
-copied unchanged. The profile template iterates over the model's annotated
-characteristic classes, and documented JSON and YAML examples are inserted
-from the validated fixture files.
+copied unchanged. Profile sections cover only characteristics required by native
+LinkML membership constraints, using induced slots, titles and ranks. Deployment
+classification checks subset membership on the class and its `is_a` and mixin
+ancestors. Documented JSON and YAML examples are inserted from fixture files.
 
 The example checker compares the modeled examples with valid fixtures and checks
 that valid and invalid fixtures pass and fail, respectively. These structural

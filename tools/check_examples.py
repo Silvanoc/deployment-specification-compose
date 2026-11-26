@@ -2,6 +2,7 @@
 import re
 import shlex
 import sys
+from pathlib import Path
 
 from linkml_runtime.utils.schemaview import SchemaView
 from linkml.validator.report import Severity
@@ -10,6 +11,7 @@ from common import ROOT, markdown_fences, parse_data, parse_oras_annotations, se
 from schema_validation import ValidationEngine
 from registry_examples import make_registry_validator, check_registry_context
 from profile_examples import ProfileValidator
+from profile_structure import profile_target as resolve_profile_target
 
 GROUPS = ("application", "profile", "registry")
 DOCUMENTS = (
@@ -18,7 +20,6 @@ DOCUMENTS = (
     ("margo-management-interface/compose-profile-characteristics.md", {"json"}, "profile", ".json", None),
     ("applications/application-registry.md", {"bash"}, "registry", "oras", "ComposeComponentAnnotations"),
 )
-PROFILE_CLASSES = ("ComposeDeploymentCharacteristic", "CpuCharacteristic", "MemoryCharacteristic", "StorageCharacteristic", "PeripheralsCharacteristic", "InterfacesCharacteristic")
 _UNPARSED = object()
 
 
@@ -45,25 +46,8 @@ class _RegistryFixtureValidator:
 
 
 def profile_target(data, schema):
-    if not isinstance(data, dict):
-        raise ValueError("Profile example must be an object")
-    if "characteristics" in data:
-        return "ComposeProfile"
-    key = data.get("key")
-    if not isinstance(key, str):
-        raise ValueError("Profile characteristic must have a string key")
-    view = SchemaView(str(schema))
-    matches = []
-    for name in PROFILE_CLASSES:
-        slot = view.induced_slot("key", name)
-        if not slot or (slot.equals_string is None and slot.pattern is None):
-            raise ValueError(f"Missing key equality or pattern for {name}")
-        if ((slot.equals_string is None or slot.equals_string == key)
-                and (slot.pattern is None or re.fullmatch(slot.pattern, key))):
-            matches.append(name)
-    if len(matches) != 1:
-        raise ValueError(f"Profile key {key!r} matches {len(matches)} characteristic classes")
-    return matches[0]
+    schema = Path(schema)
+    return resolve_profile_target(SchemaView(str(schema)), data)
 
 
 def registry_component(fragment):

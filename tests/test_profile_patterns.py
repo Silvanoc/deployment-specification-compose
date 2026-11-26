@@ -1,11 +1,12 @@
 import json
 import re
 import subprocess
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import patch
+import yaml
 
 from jsonschema import Draft202012Validator
 from linkml_runtime.utils.schemaview import SchemaView
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import check_examples
 from common import parse_data
+from profile_structure import profile_sections
 SCHEMA = ROOT / "model/compose-profile.linkml.yaml"
 KNOWN = {
     "ComposeDeploymentCharacteristic": "margo.org/deployment/compose",
@@ -60,24 +62,36 @@ class ProfilePatternsTest(unittest.TestCase):
                     check_examples.profile_target({'key': key + suffix}, SCHEMA)
 
     def test_profile_target_pattern_only_both_and_ambiguous_metadata(self):
-        with patch.object(check_examples, 'PROFILE_CLASSES', ('One', 'Two')):
-            view = SimpleNamespace(induced_slot=lambda key, name: slots[name])
-            with patch.object(check_examples, 'SchemaView', return_value=view):
-                slots = {'One': SimpleNamespace(equals_string=None, pattern=r'foo.*'),
-                         'Two': SimpleNamespace(equals_string='bar', pattern=r'bar')}
-                self.assertEqual(check_examples.profile_target({'key': 'foo42'}, SCHEMA), 'One')
-                self.assertEqual(check_examples.profile_target({'key': 'bar'}, SCHEMA), 'Two')
-                with self.assertRaisesRegex(ValueError, 'matches 0'):
-                    check_examples.profile_target({'key': 'bar\n'}, SCHEMA)
-                slots['Two'] = SimpleNamespace(equals_string='bar', pattern='no-match')
-                with self.assertRaisesRegex(ValueError, 'matches 0'):
-                    check_examples.profile_target({'key': 'bar'}, SCHEMA)
-                slots['Two'] = SimpleNamespace(equals_string='foo42', pattern=None)
-                with self.assertRaisesRegex(ValueError, 'matches 2'):
-                    check_examples.profile_target({'key': 'foo42'}, SCHEMA)
-                slots['Two'] = SimpleNamespace(equals_string=None, pattern=None)
-                with self.assertRaisesRegex(ValueError, 'Missing key equality or pattern'):
-                    check_examples.profile_target({'key': 'foo42'}, SCHEMA)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copytree(ROOT / 'model', root / 'model')
+            schema = root / 'model/compose-profile.linkml.yaml'
+            model = yaml.safe_load(schema.read_text())
+            classes = model['classes']
+            classes['One'] = {'title': 'One', 'rank': 70, 'attributes': {'key': {'range': 'string', 'pattern': 'foo.*'}}}
+            classes['Two'] = {'title': 'Two', 'rank': 80, 'attributes': {'key': {'range': 'string', 'equals_string': 'bar', 'pattern': 'bar'}}}
+            classes['ComposeProfile']['slot_usage']['characteristics']['any_of'].extend([{'range': 'One'}, {'range': 'Two'}])
+            classes['ComposeProfile']['all_of'].extend([{'slot_conditions': {'characteristics': {'has_member': {'range': name}}}} for name in ('One', 'Two')])
+            def save():
+                schema.write_text(yaml.safe_dump(model, sort_keys=False))
+            save()
+            self.assertEqual(check_examples.profile_target({'key': 'foo42'}, schema), 'One')
+            self.assertEqual(check_examples.profile_target({'key': 'bar'}, schema), 'Two')
+            with self.assertRaisesRegex(ValueError, 'matches 0'):
+                check_examples.profile_target({'key': 'bar\n'}, schema)
+            classes['Two']['attributes']['key']['pattern'] = 'no-match'
+            save()
+            with self.assertRaisesRegex(ValueError, 'matches 0'):
+                check_examples.profile_target({'key': 'bar'}, schema)
+            classes['Two']['attributes']['key'] = {'range': 'string', 'equals_string': 'foo42'}
+            save()
+            with self.assertRaisesRegex(ValueError, 'matches 2'):
+                check_examples.profile_target({'key': 'foo42'}, schema)
+            classes['One']['attributes']['key'] = {'range': 'string'}
+            classes['Two']['attributes']['key'] = {'range': 'string'}
+            save()
+            with self.assertRaisesRegex(ValueError, 'Missing key constraint'):
+                profile_sections(SchemaView(str(schema)))
 
     def test_unknown_key_excludes_only_exact_known_keys(self):
         validator = self.key_validator("ComposeOtherCharacteristic")
@@ -119,24 +133,18 @@ class ProfilePatternsTest(unittest.TestCase):
             ("Peripheral", "Peripherals", 50, "characteristic", "PeripheralsCharacteristic", "Indicates the peripherals available on the workload target."),
             ("Interface", "Interfaces", 60, "characteristic", "InterfacesCharacteristic", "Indicates the interfaces available on the workload target."),
         ]
-        classes = [c for c in view.all_classes().values() if "margo_profile_kind" in c.annotations]
-        classes.sort(key=lambda c: c.rank)
-        self.assertEqual([c.name for c in classes], [entry[0] for entry in expected])
-        for cls, (name, title, rank, kind, root, description) in zip(classes, expected):
+        sections = profile_sections(view)
+        self.assertEqual([s.display for s in sections], [entry[0] for entry in expected])
+        for section, (name, title, rank, kind, root, description) in zip(sections, expected):
             with self.subTest(name=name):
+                cls = view.get_class(section.display)
                 self.assertEqual((cls.title, cls.rank, cls.description), (title, rank, description))
-                annotations = {key: value.value for key, value in cls.annotations.items()
-                               if key != "margo_profile_example"}
-                expected_annotations = {
-                    "margo_profile_kind": kind,
-                    "margo_profile_characteristic": root,
-                }
-                self.assertEqual(annotations, expected_annotations)
+                self.assertEqual((section.kind, section.target, section.rank), (kind, root, rank))
                 if kind == "deployment":
                     properties = view.get_class(view.induced_slot('properties', root).range)
                     self.assertEqual(properties.title, 'Compose Deployment Technology')
                     self.assertEqual(properties.description, 'The properties for the Compose deployment technology will be defined once the deployment technology specifications are separated from the core specification.')
-                key = view.induced_slot("key", annotations["margo_profile_characteristic"]).equals_string
+                key = view.induced_slot("key", section.target).equals_string
                 self.assertEqual(key, KNOWN[root])
                 fixtures = [p for p in (ROOT / "model/examples/profile/valid").iterdir()
                             if re.fullmatch(re.escape(root) + r"-[A-Za-z0-9][A-Za-z0-9_-]*\.(?:json|yaml|yml)", p.name)]
@@ -144,23 +152,19 @@ class ProfilePatternsTest(unittest.TestCase):
                 for fixture in fixtures:
                     self.assertEqual(parse_data(fixture.read_text(), fixture.suffix)["key"], key)
 
-    def test_profile_examples_do_not_require_example_annotation(self):
+    def test_profile_presentation_does_not_require_obsolete_annotations(self):
         view = SchemaView(str(SCHEMA))
         for cls in view.all_classes().values():
-            cls.annotations.pop("margo_profile_example", None)
+            for name in ("margo_profile_example", "margo_profile_kind", "margo_profile_characteristic"):
+                cls.annotations.pop(name, None)
         self.assert_profile_presentation_metadata(view)
 
     def test_required_characteristics_match_presentation(self):
         expressions = self.view.get_class('ComposeProfile').all_of
         required_classes = [e.slot_conditions['characteristics'].has_member.range for e in expressions]
         required = [self.view.induced_slot('key', name).equals_string for name in required_classes]
-        displayed = [
-            self.view.induced_slot(
-                "key", cls.annotations["margo_profile_characteristic"].value
-            ).equals_string
-            for cls in self.view.all_classes().values()
-            if "margo_profile_kind" in cls.annotations
-        ]
+        displayed = [self.view.induced_slot('key', section.target).equals_string
+                     for section in profile_sections(self.view)]
         self.assertEqual(len(required), 6)
         self.assertEqual(len(displayed), 6)
         self.assertEqual(set(required), set(displayed))
